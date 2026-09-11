@@ -1,3 +1,13 @@
 <resources>
-    <string name="app_name">filament</string>
+    <string name="app_name">Filament</string>
+
+    <string name="login_brand_name">Filament</string>
+    <string name="login_subtitle">Entre para usar o sistema de chamados da Elinsa</string>
+    <string name="login_email_hint">E-mail</string>
+    <string name="login_email_helper">Enviamos um código de 6 dígitos para confirmar que é você.</string>
+    <string name="login_action_send_code">Enviar código</string>
+    <string name="login_divider_or">ou</string>
+    <string name="login_action_passkey">Entrar com Passkey</string>
+    <string name="login_action_microsoft">Entrar com a Microsoft</string>
+    <string name="login_terms_footer">Ao continuar, você concorda com os Termos de Uso e a Política de Privacidade.</string>
 </resources>

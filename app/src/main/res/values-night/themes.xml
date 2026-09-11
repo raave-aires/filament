@@ -1,4 +1,4 @@
 <resources>
     <!-- Window-level theme only; app content is themed entirely by MaterialExpressiveTheme in Compose. -->
-    <style name="Theme.Filament" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Filament" parent="android:Theme.Material.NoActionBar" />
 </resources>
