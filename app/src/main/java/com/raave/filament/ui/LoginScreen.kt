@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -32,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +46,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.fontawesome.brands.R as FontAwesomeBrandsR
 import com.composables.icons.lucide.R as LucideR
 import com.raave.filament.R
+import com.raave.filament.util.HapticUtil
 import com.raave.filament.ui.login.LoginStep
 import com.raave.filament.ui.login.LoginUiState
 import com.raave.filament.ui.login.LoginViewModel
@@ -56,21 +59,23 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val view = LocalView.current
 
     LaunchedEffect(uiState.isSignedIn) {
         if (uiState.isSignedIn) onLoginSuccess()
     }
 
+    // Haptics centralizados nas ações, em vez de repetidos em cada botão.
     LoginScreenContent(
         modifier = modifier,
         uiState = uiState,
         onEmailChange = viewModel::onEmailChange,
         onCodeChange = viewModel::onCodeChange,
-        onSendCodeClick = viewModel::onSendCodeClick,
-        onVerifyCodeClick = viewModel::onVerifyCodeClick,
-        onChangeEmailClick = viewModel::onBackToEmailClick,
-        onPasskeyClick = viewModel::onPasskeyClick,
-        onMicrosoftClick = viewModel::onMicrosoftClick,
+        onSendCodeClick = { HapticUtil.performUIHaptic(view); viewModel.onSendCodeClick() },
+        onVerifyCodeClick = { HapticUtil.performUIHaptic(view); viewModel.onVerifyCodeClick() },
+        onChangeEmailClick = { HapticUtil.performLightHaptic(view); viewModel.onBackToEmailClick() },
+        onPasskeyClick = { HapticUtil.performUIHaptic(view); viewModel.onPasskeyClick(it) },
+        onMicrosoftClick = { HapticUtil.performUIHaptic(view); viewModel.onMicrosoftClick(it) },
     )
 }
 
@@ -93,6 +98,8 @@ private fun LoginScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.systemBars)
+                // Sem isso o teclado cobre o campo em foco (o manifest usa adjustResize).
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(top = 72.dp, bottom = 32.dp),

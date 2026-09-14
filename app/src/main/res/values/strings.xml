@@ -17,6 +17,11 @@
     <string name="home_title">Filament</string>
     <string name="home_action_sign_out">Sair</string>
     <string name="home_welcome">Olá, %1$s!</string>
+    <string name="home_inicio_subtitle">Bem-vindo(a) de volta.</string>
     <string name="home_tickets_placeholder_title">Chamados</string>
     <string name="home_tickets_placeholder_body">A lista de chamados ainda está em desenvolvimento.</string>
+    <string name="home_nav_inicio">Início</string>
+    <string name="home_nav_chamados">Chamados</string>
+    <string name="home_nav_conta">Conta</string>
+    <string name="home_action_new_ticket">Novo chamado</string>
 </resources>

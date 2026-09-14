@@ -7,6 +7,9 @@ junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 activityCompose = "1.13.0"
 composeBom = "2026.09.00"
+# Acima do que o BOM 2026.09.00 traz (1.13.0-alpha01): o blur progressivo nativo
+# (Modifier.blur { radius = BlurRadiusSpec... }) só existe a partir do alpha03.
+composeUi = "1.13.0-alpha03"
 material3 = "1.5.0-alpha28"
 iconsComposables = "2.2.1"
 lifecycle = "2.9.4"
@@ -20,8 +23,8 @@ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "j
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
-androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
-androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "composeUi" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "composeUi" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }

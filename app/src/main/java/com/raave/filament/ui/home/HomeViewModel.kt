@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.raave.filament.data.auth.AuthRepository
 import com.raave.filament.data.auth.AuthTokenStore
+import com.raave.filament.util.DeviceUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadSession()
+        refreshBlurState()
     }
 
     private fun loadSession() {
@@ -45,6 +47,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 },
             )
         }
+    }
+
+    /**
+     * Reavaliado a cada retomada da tela: o modo de economia de bateria pode ser ligado enquanto
+     * o app está aberto.
+     */
+    fun refreshBlurState() {
+        val supported = DeviceUtils.isBlurSupported(getApplication())
+        _uiState.update { it.copy(isBlurEnabled = supported) }
+    }
+
+    fun onTabSelected(tab: HomeTab) {
+        _uiState.update { it.copy(selectedTab = tab) }
     }
 
     fun onSignOutClick() {

@@ -21,7 +21,10 @@ val devApiBaseUrl = localProperties.getProperty("api.baseUrl") ?: "http://10.0.2
 android {
     namespace = "com.raave.filament"
     compileSdk {
-        version = release(37)
+        // 37.1 é exigido pelo androidx.compose.ui 1.13.0-alpha03 (blur progressivo nativo).
+        version = release(37) {
+            minorApiLevel = 1
+        }
     }
 
     defaultConfig {

@@ -16,6 +16,7 @@ class LoginActivity : ComponentActivity() {
     private val loginViewModel: LoginViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         if (AuthTokenStore(this).getToken() != null) {
@@ -24,7 +25,6 @@ class LoginActivity : ComponentActivity() {
             return
         }
 
-        enableEdgeToEdge()
         setContent {
             FilamentTheme {
                 LoginScreen(viewModel = loginViewModel, onLoginSuccess = ::navigateToHome)
@@ -44,8 +44,8 @@ class LoginActivity : ComponentActivity() {
         handleMicrosoftCallback(intent)
     }
 
-    // Recebe de volta o deep link `com.raave.filament://auth-callback` aberto pela Custom Tab
-    // depois do login social (ver LoginActivity manifest e LoginViewModel.onMicrosoftClick).
+    // Recebe de volta o deep link `filament://auth-callback` aberto pela Custom Tab depois do
+    // login social (ver o intent-filter no manifest e LoginViewModel.onMicrosoftClick).
     private fun handleMicrosoftCallback(intent: Intent) {
         val uri = intent.data ?: return
         if (uri.scheme == "filament" && uri.host == "auth-callback") {

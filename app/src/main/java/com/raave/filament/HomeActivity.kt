@@ -11,8 +11,11 @@ import com.raave.filament.ui.theme.FilamentTheme
 class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        // A barra flutuante desenha sobre a navigation bar; sem isso o sistema aplica um fundo
+        // de contraste atrás dela e quebra o efeito de blur/transparência.
+        window.isNavigationBarContrastEnforced = false
         setContent {
             FilamentTheme {
                 HomeScreen(onSignedOut = ::navigateToLogin)
