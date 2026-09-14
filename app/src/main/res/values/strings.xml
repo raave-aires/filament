@@ -6,8 +6,17 @@
     <string name="login_email_hint">E-mail</string>
     <string name="login_email_helper">Enviamos um código de 6 dígitos para confirmar que é você.</string>
     <string name="login_action_send_code">Enviar código</string>
+    <string name="login_code_hint">Código de verificação</string>
+    <string name="login_action_verify_code">Verificar código</string>
+    <string name="login_action_change_email">Usar outro e-mail</string>
     <string name="login_divider_or">ou</string>
     <string name="login_action_passkey">Entrar com Passkey</string>
     <string name="login_action_microsoft">Entrar com a Microsoft</string>
     <string name="login_terms_footer">Ao continuar, você concorda com os Termos de Uso e a Política de Privacidade.</string>
+
+    <string name="home_title">Filament</string>
+    <string name="home_action_sign_out">Sair</string>
+    <string name="home_welcome">Olá, %1$s!</string>
+    <string name="home_tickets_placeholder_title">Chamados</string>
+    <string name="home_tickets_placeholder_body">A lista de chamados ainda está em desenvolvimento.</string>
 </resources>
