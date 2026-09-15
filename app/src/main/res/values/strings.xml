@@ -24,4 +24,12 @@
     <string name="home_nav_chamados">Chamados</string>
     <string name="home_nav_conta">Conta</string>
     <string name="home_action_new_ticket">Novo chamado</string>
+    <string name="home_last_ticket_created">Último chamado aberto: #%1$d</string>
+
+    <string name="new_ticket_dialog_title">Novo chamado</string>
+    <string name="new_ticket_field_name">Título</string>
+    <string name="new_ticket_field_content">Descreva o que está acontecendo</string>
+    <string name="new_ticket_action_submit">Abrir chamado</string>
+    <string name="new_ticket_action_cancel">Cancelar</string>
+    <string name="new_ticket_error_empty">Preencha o título e a descrição</string>
 </resources>

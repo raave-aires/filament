@@ -9,4 +9,12 @@ data class HomeUiState(
     val selectedTab: HomeTab = HomeTab.INICIO,
     val isBlurEnabled: Boolean = false,
     val signedOut: Boolean = false,
+    val isNewTicketDialogOpen: Boolean = false,
+    val newTicketName: String = "",
+    val newTicketContent: String = "",
+    val isCreatingTicket: Boolean = false,
+    val newTicketError: String? = null,
+    // Só confirma o que foi aberto nesta sessão — a listagem de chamados depende de um filtro
+    // por requerente que o GLPI ainda não atende (ver NOTES.md do backbone).
+    val lastCreatedTicketId: Long? = null,
 )

@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -24,7 +27,9 @@ import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -67,7 +72,6 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(),
     onSignedOut: () -> Unit = {},
-    onNewTicketClick: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -86,7 +90,11 @@ fun HomeScreen(
         uiState = uiState,
         onTabSelected = viewModel::onTabSelected,
         onSignOutClick = viewModel::onSignOutClick,
-        onNewTicketClick = onNewTicketClick,
+        onNewTicketClick = viewModel::onNewTicketButtonClick,
+        onNewTicketDismiss = viewModel::onNewTicketDismiss,
+        onNewTicketNameChange = viewModel::onNewTicketNameChange,
+        onNewTicketContentChange = viewModel::onNewTicketContentChange,
+        onNewTicketSubmit = viewModel::onNewTicketSubmit,
     )
 }
 
@@ -97,6 +105,10 @@ private fun HomeScreenContent(
     onTabSelected: (HomeTab) -> Unit,
     onSignOutClick: () -> Unit,
     onNewTicketClick: () -> Unit,
+    onNewTicketDismiss: () -> Unit,
+    onNewTicketNameChange: (String) -> Unit,
+    onNewTicketContentChange: (String) -> Unit,
+    onNewTicketSubmit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -166,7 +178,7 @@ private fun HomeScreenContent(
                     Column {
                         when (tab) {
                             HomeTab.INICIO -> InicioTab(uiState)
-                            HomeTab.CHAMADOS -> ChamadosTab()
+                            HomeTab.CHAMADOS -> ChamadosTab(uiState)
                             HomeTab.CONTA -> ContaTab(uiState, onSignOutClick)
                         }
                     }
@@ -195,7 +207,75 @@ private fun HomeScreenContent(
                 }
             },
         )
+
+        if (uiState.isNewTicketDialogOpen) {
+            NewTicketDialog(
+                uiState = uiState,
+                onDismiss = onNewTicketDismiss,
+                onNameChange = onNewTicketNameChange,
+                onContentChange = onNewTicketContentChange,
+                onSubmit = onNewTicketSubmit,
+            )
+        }
     }
+}
+
+@Composable
+private fun NewTicketDialog(
+    uiState: HomeUiState,
+    onDismiss: () -> Unit,
+    onNameChange: (String) -> Unit,
+    onContentChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!uiState.isCreatingTicket) onDismiss() },
+        title = { Text(stringResource(R.string.new_ticket_dialog_title)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = uiState.newTicketName,
+                    onValueChange = onNameChange,
+                    label = { Text(stringResource(R.string.new_ticket_field_name)) },
+                    singleLine = true,
+                    enabled = !uiState.isCreatingTicket,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = uiState.newTicketContent,
+                    onValueChange = onContentChange,
+                    label = { Text(stringResource(R.string.new_ticket_field_content)) },
+                    minLines = 3,
+                    enabled = !uiState.isCreatingTicket,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                )
+                if (uiState.newTicketError != null) {
+                    Text(
+                        text = uiState.newTicketError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onSubmit, enabled = !uiState.isCreatingTicket) {
+                if (uiState.isCreatingTicket) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(stringResource(R.string.new_ticket_action_submit))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !uiState.isCreatingTicket) {
+                Text(stringResource(R.string.new_ticket_action_cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -216,7 +296,7 @@ private fun InicioTab(uiState: HomeUiState) {
 }
 
 @Composable
-private fun ChamadosTab() {
+private fun ChamadosTab(uiState: HomeUiState) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(24.dp)) {
             Text(
@@ -229,6 +309,14 @@ private fun ChamadosTab() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
+            if (uiState.lastCreatedTicketId != null) {
+                Text(
+                    text = stringResource(R.string.home_last_ticket_created, uiState.lastCreatedTicketId),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
         }
     }
 }
@@ -274,6 +362,10 @@ private fun HomeScreenPreview() {
             onTabSelected = {},
             onSignOutClick = {},
             onNewTicketClick = {},
+            onNewTicketDismiss = {},
+            onNewTicketNameChange = {},
+            onNewTicketContentChange = {},
+            onNewTicketSubmit = {},
         )
     }
 }
