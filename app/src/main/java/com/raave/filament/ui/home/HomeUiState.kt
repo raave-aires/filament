@@ -1,5 +1,8 @@
 package com.raave.filament.ui.home
 
+import com.raave.filament.data.glpi.GlpiFollowup
+import com.raave.filament.data.glpi.GlpiTicketSummary
+
 enum class HomeTab { INICIO, CHAMADOS, CONTA }
 
 data class HomeUiState(
@@ -14,7 +17,26 @@ data class HomeUiState(
     val newTicketContent: String = "",
     val isCreatingTicket: Boolean = false,
     val newTicketError: String? = null,
-    // Só confirma o que foi aberto nesta sessão — a listagem de chamados depende de um filtro
-    // por requerente que o GLPI ainda não atende (ver NOTES.md do backbone).
+    // Só confirma o que foi aberto nesta sessão — fica como retaguarda caso a listagem abaixo
+    // ainda não esteja no ar no backend (ver GlpiRepository.getTickets).
     val lastCreatedTicketId: Long? = null,
+    val chamados: List<GlpiTicketSummary> = emptyList(),
+    val isChamadosLoading: Boolean = false,
+    val chamadosError: String? = null,
+    // Badge da aba Chamados. Preenchido a partir do total de [chamados] assim que a listagem
+    // carrega com sucesso; continua nulo enquanto isso não acontece.
+    val chamadosBadgeCount: Int? = null,
+    // Não nulo abre a tela de chat em tela cheia por cima das abas (ver HomeScreen).
+    val chatState: ChatUiState? = null,
+)
+
+data class ChatUiState(
+    val ticketId: Long,
+    val ticketName: String,
+    val followups: List<GlpiFollowup> = emptyList(),
+    val isLoading: Boolean = true,
+    val loadError: String? = null,
+    val draftMessage: String = "",
+    val isSending: Boolean = false,
+    val sendError: String? = null,
 )

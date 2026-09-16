@@ -10,6 +10,8 @@ import org.json.JSONObject
 private object GlpiPaths {
     const val STATUS = "/api/glpi/status"
     const val TICKETS = "/api/glpi/tickets"
+    fun ticket(id: Long) = "$TICKETS/$id"
+    fun followups(ticketId: Long) = "${ticket(ticketId)}/followups"
 }
 
 /**
@@ -47,6 +49,63 @@ class GlpiRepository(
                 headers = mapOf("Authorization" to "Bearer $token"),
             )
             Result.success(response.body.getLong("id"))
+        } catch (e: ApiException) {
+            Result.failure(e)
+        } catch (e: IOException) {
+            Result.failure(IOException(NETWORK_ERROR_MESSAGE, e))
+        }
+    }
+
+    /**
+     * Chamados abertos pelo usuário logado. Depende de endpoint novo no backbone (ver NOTES.md) —
+     * até existir, falha com 404 e a tela mostra o estado de erro normalmente.
+     */
+    suspend fun getTickets(): Result<List<GlpiTicketSummary>> {
+        val token = tokenStore.getToken() ?: return Result.failure(IllegalStateException("Sem sessão ativa"))
+        return try {
+            val response = HttpClient.getJson(
+                url = baseUrl + GlpiPaths.TICKETS,
+                headers = mapOf("Authorization" to "Bearer $token"),
+            )
+            val tickets = response.body.getJSONArray("tickets")
+            Result.success(List(tickets.length()) { index -> tickets.getJSONObject(index).toTicketSummary() })
+        } catch (e: ApiException) {
+            Result.failure(e)
+        } catch (e: IOException) {
+            Result.failure(IOException(NETWORK_ERROR_MESSAGE, e))
+        }
+    }
+
+    /** Mensagens (followups) públicas do chamado, em ordem cronológica. */
+    suspend fun getFollowups(ticketId: Long): Result<List<GlpiFollowup>> {
+        val token = tokenStore.getToken() ?: return Result.failure(IllegalStateException("Sem sessão ativa"))
+        return try {
+            val response = HttpClient.getJson(
+                url = baseUrl + GlpiPaths.followups(ticketId),
+                headers = mapOf("Authorization" to "Bearer $token"),
+            )
+            val followups = response.body.getJSONArray("followups")
+            val visible = (0 until followups.length())
+                .map { index -> followups.getJSONObject(index) }
+                .filterNot { it.isPrivateFollowup() }
+            Result.success(visible.map { it.toFollowup() })
+        } catch (e: ApiException) {
+            Result.failure(e)
+        } catch (e: IOException) {
+            Result.failure(IOException(NETWORK_ERROR_MESSAGE, e))
+        }
+    }
+
+    /** Envia uma nova mensagem no chamado em nome do usuário logado. */
+    suspend fun sendFollowup(ticketId: Long, content: String): Result<GlpiFollowup> {
+        val token = tokenStore.getToken() ?: return Result.failure(IllegalStateException("Sem sessão ativa"))
+        return try {
+            val response = HttpClient.postJson(
+                url = baseUrl + GlpiPaths.followups(ticketId),
+                body = JSONObject().put("content", content),
+                headers = mapOf("Authorization" to "Bearer $token"),
+            )
+            Result.success(response.body.toFollowup())
         } catch (e: ApiException) {
             Result.failure(e)
         } catch (e: IOException) {

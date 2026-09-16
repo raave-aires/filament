@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -49,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.R as LucideR
 import com.raave.filament.R
+import com.raave.filament.data.glpi.GlpiTicketSummary
 import com.raave.filament.ui.components.FilamentFloatingToolbar
 import com.raave.filament.ui.components.ToolbarItem
 import com.raave.filament.ui.home.HomeTab
@@ -58,9 +60,13 @@ import com.raave.filament.ui.modifier.progressiveBlurEdges
 import com.raave.filament.ui.theme.FilamentTheme
 import com.raave.filament.util.HapticUtil
 
-private val HomeTabItems = listOf(
+private fun homeTabItems(chamadosBadgeCount: Int?) = listOf(
     ToolbarItem(iconRes = LucideR.drawable.lucide_ic_house, labelRes = R.string.home_nav_inicio),
-    ToolbarItem(iconRes = LucideR.drawable.lucide_ic_send, labelRes = R.string.home_nav_chamados),
+    ToolbarItem(
+        iconRes = LucideR.drawable.lucide_ic_message_circle,
+        labelRes = R.string.home_nav_chamados,
+        badgeCount = chamadosBadgeCount,
+    ),
     ToolbarItem(iconRes = LucideR.drawable.lucide_ic_circle_user, labelRes = R.string.home_nav_conta),
 )
 
@@ -95,6 +101,12 @@ fun HomeScreen(
         onNewTicketNameChange = viewModel::onNewTicketNameChange,
         onNewTicketContentChange = viewModel::onNewTicketContentChange,
         onNewTicketSubmit = viewModel::onNewTicketSubmit,
+        onTicketClick = viewModel::onTicketClick,
+        onChamadosRetryClick = viewModel::loadChamados,
+        onChatBackClick = viewModel::onChatBackClick,
+        onChatRetryClick = viewModel::onChatRetryClick,
+        onChatMessageChange = viewModel::onChatMessageChange,
+        onChatSendClick = viewModel::onChatSendClick,
     )
 }
 
@@ -109,6 +121,12 @@ private fun HomeScreenContent(
     onNewTicketNameChange: (String) -> Unit,
     onNewTicketContentChange: (String) -> Unit,
     onNewTicketSubmit: () -> Unit,
+    onTicketClick: (GlpiTicketSummary) -> Unit,
+    onChamadosRetryClick: () -> Unit,
+    onChatBackClick: () -> Unit,
+    onChatRetryClick: () -> Unit,
+    onChatMessageChange: (String) -> Unit,
+    onChatSendClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -121,6 +139,17 @@ private fun HomeScreenContent(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
+        } else if (uiState.chatState != null) {
+            // Tela cheia por cima das abas: um chat não faz sentido dividindo espaço com a barra
+            // flutuante de navegação, então ela some enquanto o chat está aberto.
+            ChatScreen(
+                chatState = uiState.chatState,
+                currentUserEmail = uiState.userEmail,
+                onBackClick = onChatBackClick,
+                onRetryClick = onChatRetryClick,
+                onMessageChange = onChatMessageChange,
+                onSendClick = onChatSendClick,
+            )
         } else {
             val scrollState = rememberScrollState()
             // Sem rolagem nada passa por trás das barras, então o blur seria custo de GPU por
@@ -178,7 +207,7 @@ private fun HomeScreenContent(
                     Column {
                         when (tab) {
                             HomeTab.INICIO -> InicioTab(uiState)
-                            HomeTab.CHAMADOS -> ChamadosTab(uiState)
+                            HomeTab.CHAMADOS -> ChamadosTab(uiState, onTicketClick, onChamadosRetryClick)
                             HomeTab.CONTA -> ContaTab(uiState, onSignOutClick)
                         }
                     }
@@ -186,36 +215,38 @@ private fun HomeScreenContent(
             }
         }
 
-        FilamentFloatingToolbar(
-            items = HomeTabItems,
-            selectedIndex = uiState.selectedTab.ordinal,
-            onItemSelected = { index -> onTabSelected(HomeTab.entries[index]) },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 8.dp),
-            floatingActionButton = {
-                FloatingToolbarDefaults.StandardFloatingActionButton(
-                    onClick = {
-                        HapticUtil.performHeavyHaptic(view)
-                        onNewTicketClick()
-                    },
-                ) {
-                    Icon(
-                        painter = painterResource(LucideR.drawable.lucide_ic_plus),
-                        contentDescription = stringResource(R.string.home_action_new_ticket),
-                    )
-                }
-            },
-        )
-
-        if (uiState.isNewTicketDialogOpen) {
-            NewTicketDialog(
-                uiState = uiState,
-                onDismiss = onNewTicketDismiss,
-                onNameChange = onNewTicketNameChange,
-                onContentChange = onNewTicketContentChange,
-                onSubmit = onNewTicketSubmit,
+        if (!uiState.isLoading && uiState.chatState == null) {
+            FilamentFloatingToolbar(
+                items = remember(uiState.chamadosBadgeCount) { homeTabItems(uiState.chamadosBadgeCount) },
+                selectedIndex = uiState.selectedTab.ordinal,
+                onItemSelected = { index -> onTabSelected(HomeTab.entries[index]) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 8.dp),
+                floatingActionButton = {
+                    FloatingToolbarDefaults.StandardFloatingActionButton(
+                        onClick = {
+                            HapticUtil.performHeavyHaptic(view)
+                            onNewTicketClick()
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(LucideR.drawable.lucide_ic_plus),
+                            contentDescription = stringResource(R.string.home_action_new_ticket),
+                        )
+                    }
+                },
             )
+
+            if (uiState.isNewTicketDialogOpen) {
+                NewTicketDialog(
+                    uiState = uiState,
+                    onDismiss = onNewTicketDismiss,
+                    onNameChange = onNewTicketNameChange,
+                    onContentChange = onNewTicketContentChange,
+                    onSubmit = onNewTicketSubmit,
+                )
+            }
         }
     }
 }
@@ -296,25 +327,110 @@ private fun InicioTab(uiState: HomeUiState) {
 }
 
 @Composable
-private fun ChamadosTab(uiState: HomeUiState) {
+private fun ChamadosTab(
+    uiState: HomeUiState,
+    onTicketClick: (GlpiTicketSummary) -> Unit,
+    onRetryClick: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (uiState.lastCreatedTicketId != null) {
+            Text(
+                text = stringResource(R.string.home_last_ticket_created, uiState.lastCreatedTicketId),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        when {
+            uiState.isChamadosLoading && uiState.chamados.isEmpty() -> {
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+            uiState.chamadosError != null && uiState.chamados.isEmpty() -> {
+                TicketsErrorState(message = uiState.chamadosError, onRetryClick = onRetryClick)
+            }
+            uiState.chamados.isEmpty() -> {
+                TicketsEmptyState()
+            }
+            else -> {
+                uiState.chamados.forEach { ticket ->
+                    TicketCard(ticket = ticket, onClick = { onTicketClick(ticket) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TicketsEmptyState() {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(24.dp)) {
             Text(
-                text = stringResource(R.string.home_tickets_placeholder_title),
+                text = stringResource(R.string.tickets_empty_title),
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = stringResource(R.string.home_tickets_placeholder_body),
+                text = stringResource(R.string.tickets_empty_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
-            if (uiState.lastCreatedTicketId != null) {
+        }
+    }
+}
+
+@Composable
+private fun TicketsErrorState(message: String?, onRetryClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Text(
+                text = stringResource(R.string.tickets_error_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (message != null) {
                 Text(
-                    text = stringResource(R.string.home_last_ticket_created, uiState.lastCreatedTicketId),
+                    text = message,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 16.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            OutlinedButton(onClick = onRetryClick, modifier = Modifier.padding(top = 16.dp)) {
+                Text(stringResource(R.string.tickets_action_retry))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TicketCard(ticket: GlpiTicketSummary, onClick: () -> Unit) {
+    val view = LocalView.current
+    Card(
+        onClick = {
+            HapticUtil.performUIHaptic(view)
+            onClick()
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = ticket.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = stringResource(R.string.tickets_status_label, ticket.status),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            if (ticket.date != null) {
+                Text(
+                    text = stringResource(R.string.tickets_date_label, ticket.date),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
@@ -366,6 +482,12 @@ private fun HomeScreenPreview() {
             onNewTicketNameChange = {},
             onNewTicketContentChange = {},
             onNewTicketSubmit = {},
+            onTicketClick = {},
+            onChamadosRetryClick = {},
+            onChatBackClick = {},
+            onChatRetryClick = {},
+            onChatMessageChange = {},
+            onChatSendClick = {},
         )
     }
 }

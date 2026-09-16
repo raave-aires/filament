@@ -18,8 +18,6 @@
     <string name="home_action_sign_out">Sair</string>
     <string name="home_welcome">Olá, %1$s!</string>
     <string name="home_inicio_subtitle">Bem-vindo(a) de volta.</string>
-    <string name="home_tickets_placeholder_title">Chamados</string>
-    <string name="home_tickets_placeholder_body">A lista de chamados ainda está em desenvolvimento.</string>
     <string name="home_nav_inicio">Início</string>
     <string name="home_nav_chamados">Chamados</string>
     <string name="home_nav_conta">Conta</string>
@@ -32,4 +30,17 @@
     <string name="new_ticket_action_submit">Abrir chamado</string>
     <string name="new_ticket_action_cancel">Cancelar</string>
     <string name="new_ticket_error_empty">Preencha o título e a descrição</string>
+
+    <string name="tickets_empty_title">Nenhum chamado ainda</string>
+    <string name="tickets_empty_body">Toque no botão + para abrir o seu primeiro chamado.</string>
+    <string name="tickets_error_title">Não foi possível carregar os chamados</string>
+    <string name="tickets_action_retry">Tentar novamente</string>
+    <string name="tickets_status_label">Status: %1$s</string>
+    <string name="tickets_date_label">Aberto em %1$s</string>
+
+    <string name="chat_action_back">Voltar</string>
+    <string name="chat_empty_body">Nenhuma mensagem por aqui ainda. Escreva a primeira.</string>
+    <string name="chat_error_title">Não foi possível carregar as mensagens</string>
+    <string name="chat_input_placeholder">Escreva uma mensagem</string>
+    <string name="chat_action_send">Enviar</string>
 </resources>

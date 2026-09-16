@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.raave.filament.data.auth.AuthRepository
 import com.raave.filament.data.auth.AuthTokenStore
 import com.raave.filament.data.glpi.GlpiRepository
+import com.raave.filament.data.glpi.GlpiTicketSummary
 import com.raave.filament.util.DeviceUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadSession()
         refreshBlurState()
+        loadChamados()
     }
 
     private fun loadSession() {
@@ -112,11 +114,94 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             selectedTab = HomeTab.CHAMADOS,
                         )
                     }
+                    loadChamados()
                 },
                 onFailure = { error ->
                     _uiState.update { it.copy(isCreatingTicket = false, newTicketError = error.message) }
                 },
             )
+        }
+    }
+
+    fun loadChamados() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isChamadosLoading = true, chamadosError = null) }
+            glpiRepository.getTickets().fold(
+                onSuccess = { tickets ->
+                    _uiState.update {
+                        it.copy(
+                            isChamadosLoading = false,
+                            chamados = tickets,
+                            chamadosBadgeCount = tickets.size.takeIf { count -> count > 0 },
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update { it.copy(isChamadosLoading = false, chamadosError = error.message) }
+                },
+            )
+        }
+    }
+
+    fun onTicketClick(ticket: GlpiTicketSummary) {
+        _uiState.update { it.copy(chatState = ChatUiState(ticketId = ticket.id, ticketName = ticket.name)) }
+        loadFollowups(ticket.id)
+    }
+
+    fun onChatBackClick() {
+        _uiState.update { it.copy(chatState = null) }
+    }
+
+    fun onChatRetryClick() {
+        _uiState.value.chatState?.let { loadFollowups(it.ticketId) }
+    }
+
+    fun onChatMessageChange(text: String) {
+        updateChat { it.copy(draftMessage = text, sendError = null) }
+    }
+
+    fun onChatSendClick() {
+        val chat = _uiState.value.chatState ?: return
+        val content = chat.draftMessage.trim()
+        if (content.isEmpty()) return
+        viewModelScope.launch {
+            updateChat(chat.ticketId) { it.copy(isSending = true, sendError = null) }
+            glpiRepository.sendFollowup(chat.ticketId, content).fold(
+                onSuccess = { followup ->
+                    updateChat(chat.ticketId) {
+                        it.copy(isSending = false, draftMessage = "", followups = it.followups + followup)
+                    }
+                },
+                onFailure = { error ->
+                    updateChat(chat.ticketId) { it.copy(isSending = false, sendError = error.message) }
+                },
+            )
+        }
+    }
+
+    private fun loadFollowups(ticketId: Long) {
+        viewModelScope.launch {
+            updateChat(ticketId) { it.copy(isLoading = true, loadError = null) }
+            glpiRepository.getFollowups(ticketId).fold(
+                onSuccess = { followups ->
+                    updateChat(ticketId) { it.copy(isLoading = false, followups = followups) }
+                },
+                onFailure = { error ->
+                    updateChat(ticketId) { it.copy(isLoading = false, loadError = error.message) }
+                },
+            )
+        }
+    }
+
+    private fun updateChat(transform: (ChatUiState) -> ChatUiState) {
+        _uiState.value.chatState?.let { updateChat(it.ticketId, transform) }
+    }
+
+    /** Só aplica se o chat aberto ainda for o mesmo chamado — evita corrida se o usuário já voltou pra lista. */
+    private fun updateChat(ticketId: Long, transform: (ChatUiState) -> ChatUiState) {
+        _uiState.update { state ->
+            val chat = state.chatState
+            if (chat != null && chat.ticketId == ticketId) state.copy(chatState = transform(chat)) else state
         }
     }
 }
