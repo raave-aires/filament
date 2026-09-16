@@ -31,6 +31,12 @@
       "skillPath": "packages/skills/skills/argent-android-emulator-setup/SKILL.md",
       "computedHash": "77179c52c11e23c91d01bb3302ed6ad94f4ea9960a9d010cd6833a03e55ebba7"
     },
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/impeccable/SKILL.md",
+      "computedHash": "ec48c58ca973b42c826d5d3be9069b7023d2361ebf7f89ee56b0bae7eb92390a"
+    },
     "material-3": {
       "source": "hamen/material-3-skill",
       "sourceType": "github",
