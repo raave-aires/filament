@@ -7,6 +7,12 @@
       "skillPath": "skills/android-clean-architecture/SKILL.md",
       "computedHash": "80779b595f194a1ca3d59e36cbf4b29f426faaf90cf9c41dfd61a80442214890"
     },
+    "android-material3-design-system": {
+      "source": "krutikjain/android-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/android-material3-design-system/SKILL.md",
+      "computedHash": "16cfbcb633b02a4fa19b3f3524c3549fe9166842bb9061c6b91ab33a364e9631"
+    },
     "android-ui-states-validation": {
       "source": "krutikjain/android-agent-skills",
       "sourceType": "github",
