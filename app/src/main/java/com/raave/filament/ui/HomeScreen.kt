@@ -1,5 +1,6 @@
 package com.raave.filament.ui
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -106,6 +107,8 @@ fun HomeScreen(
         onChatBackClick = viewModel::onChatBackClick,
         onChatRetryClick = viewModel::onChatRetryClick,
         onChatMessageChange = viewModel::onChatMessageChange,
+        onChatAttachmentsPicked = viewModel::onAttachmentsPicked,
+        onChatRemoveAttachment = viewModel::onChatRemoveAttachment,
         onChatSendClick = viewModel::onChatSendClick,
     )
 }
@@ -126,6 +129,8 @@ private fun HomeScreenContent(
     onChatBackClick: () -> Unit,
     onChatRetryClick: () -> Unit,
     onChatMessageChange: (String) -> Unit,
+    onChatAttachmentsPicked: (List<Uri>) -> Unit,
+    onChatRemoveAttachment: (String) -> Unit,
     onChatSendClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -144,10 +149,12 @@ private fun HomeScreenContent(
             // flutuante de navegação, então ela some enquanto o chat está aberto.
             ChatScreen(
                 chatState = uiState.chatState,
-                currentUserEmail = uiState.userEmail,
                 onBackClick = onChatBackClick,
+                onMoreClick = {},
                 onRetryClick = onChatRetryClick,
                 onMessageChange = onChatMessageChange,
+                onAttachmentsPicked = onChatAttachmentsPicked,
+                onRemoveAttachment = onChatRemoveAttachment,
                 onSendClick = onChatSendClick,
             )
         } else {
@@ -487,6 +494,8 @@ private fun HomeScreenPreview() {
             onChatBackClick = {},
             onChatRetryClick = {},
             onChatMessageChange = {},
+            onChatAttachmentsPicked = {},
+            onChatRemoveAttachment = {},
             onChatSendClick = {},
         )
     }

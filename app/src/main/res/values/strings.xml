@@ -39,8 +39,11 @@
     <string name="tickets_date_label">Aberto em %1$s</string>
 
     <string name="chat_action_back">Voltar</string>
+    <string name="chat_action_more">Mais opções</string>
     <string name="chat_empty_body">Nenhuma mensagem por aqui ainda. Escreva a primeira.</string>
     <string name="chat_error_title">Não foi possível carregar as mensagens</string>
     <string name="chat_input_placeholder">Escreva uma mensagem</string>
     <string name="chat_action_send">Enviar</string>
+    <string name="chat_action_attach">Anexar arquivo</string>
+    <string name="chat_action_remove_attachment">Remover anexo</string>
 </resources>

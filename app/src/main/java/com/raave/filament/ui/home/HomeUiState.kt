@@ -2,6 +2,7 @@ package com.raave.filament.ui.home
 
 import com.raave.filament.data.glpi.GlpiFollowup
 import com.raave.filament.data.glpi.GlpiTicketSummary
+import com.raave.filament.data.glpi.PendingAttachment
 
 enum class HomeTab { INICIO, CHAMADOS, CONTA }
 
@@ -37,6 +38,8 @@ data class ChatUiState(
     val isLoading: Boolean = true,
     val loadError: String? = null,
     val draftMessage: String = "",
+    val pendingAttachments: List<PendingAttachment> = emptyList(),
+    val attachmentError: String? = null,
     val isSending: Boolean = false,
     val sendError: String? = null,
 )

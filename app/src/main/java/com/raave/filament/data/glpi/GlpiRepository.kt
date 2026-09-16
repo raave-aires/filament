@@ -4,6 +4,7 @@ import com.raave.filament.BuildConfig
 import com.raave.filament.data.auth.AuthTokenStore
 import com.raave.filament.data.network.ApiException
 import com.raave.filament.data.network.HttpClient
+import com.raave.filament.data.network.MultipartFile
 import java.io.IOException
 import org.json.JSONObject
 
@@ -56,10 +57,7 @@ class GlpiRepository(
         }
     }
 
-    /**
-     * Chamados abertos pelo usuário logado. Depende de endpoint novo no backbone (ver NOTES.md) —
-     * até existir, falha com 404 e a tela mostra o estado de erro normalmente.
-     */
+    /** Chamados abertos pelo usuário logado. */
     suspend fun getTickets(): Result<List<GlpiTicketSummary>> {
         val token = tokenStore.getToken() ?: return Result.failure(IllegalStateException("Sem sessão ativa"))
         return try {
@@ -69,6 +67,22 @@ class GlpiRepository(
             )
             val tickets = response.body.getJSONArray("tickets")
             Result.success(List(tickets.length()) { index -> tickets.getJSONObject(index).toTicketSummary() })
+        } catch (e: ApiException) {
+            Result.failure(e)
+        } catch (e: IOException) {
+            Result.failure(IOException(NETWORK_ERROR_MESSAGE, e))
+        }
+    }
+
+    /** Detalhe do chamado — usado pra recuperar a mensagem de abertura (`content`), que o GLPI não trata como followup. */
+    suspend fun getTicket(id: Long): Result<GlpiTicketDetail> {
+        val token = tokenStore.getToken() ?: return Result.failure(IllegalStateException("Sem sessão ativa"))
+        return try {
+            val response = HttpClient.getJson(
+                url = baseUrl + GlpiPaths.ticket(id),
+                headers = mapOf("Authorization" to "Bearer $token"),
+            )
+            Result.success(response.body.toTicketDetail())
         } catch (e: ApiException) {
             Result.failure(e)
         } catch (e: IOException) {
@@ -96,15 +110,28 @@ class GlpiRepository(
         }
     }
 
-    /** Envia uma nova mensagem no chamado em nome do usuário logado. */
-    suspend fun sendFollowup(ticketId: Long, content: String): Result<GlpiFollowup> {
+    /** Envia uma nova mensagem (com anexos opcionais) no chamado em nome do usuário logado. */
+    suspend fun sendFollowup(
+        ticketId: Long,
+        content: String,
+        attachments: List<PendingAttachment> = emptyList(),
+    ): Result<GlpiFollowup> {
         val token = tokenStore.getToken() ?: return Result.failure(IllegalStateException("Sem sessão ativa"))
         return try {
-            val response = HttpClient.postJson(
-                url = baseUrl + GlpiPaths.followups(ticketId),
-                body = JSONObject().put("content", content),
-                headers = mapOf("Authorization" to "Bearer $token"),
-            )
+            val response = if (attachments.isEmpty()) {
+                HttpClient.postJson(
+                    url = baseUrl + GlpiPaths.followups(ticketId),
+                    body = JSONObject().put("content", content),
+                    headers = mapOf("Authorization" to "Bearer $token"),
+                )
+            } else {
+                HttpClient.postMultipart(
+                    url = baseUrl + GlpiPaths.followups(ticketId),
+                    fields = mapOf("content" to content),
+                    files = attachments.map { MultipartFile("files", it.fileName, it.mimeType, it.bytes) },
+                    headers = mapOf("Authorization" to "Bearer $token"),
+                )
+            }
             Result.success(response.body.toFollowup())
         } catch (e: ApiException) {
             Result.failure(e)

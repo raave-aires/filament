@@ -1,18 +1,27 @@
 package com.raave.filament.ui.home
 
 import android.app.Application
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.raave.filament.data.auth.AuthRepository
 import com.raave.filament.data.auth.AuthTokenStore
+import com.raave.filament.data.glpi.GlpiFollowup
 import com.raave.filament.data.glpi.GlpiRepository
+import com.raave.filament.data.glpi.GlpiTicketDetail
 import com.raave.filament.data.glpi.GlpiTicketSummary
+import com.raave.filament.data.glpi.PendingAttachment
 import com.raave.filament.util.DeviceUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -36,7 +45,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     val user = body.optJSONObject("user")
                     if (user == null) {
                         // Token guardado não corresponde mais a uma sessão válida no backend.
-                        _uiState.update { it.copy(isLoading = false, signedOut = true) }
+                        signOutLocally()
                     } else {
                         _uiState.update {
                             it.copy(
@@ -48,10 +57,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 },
                 onFailure = {
-                    _uiState.update { it.copy(isLoading = false, signedOut = true) }
+                    signOutLocally()
                 },
             )
         }
+    }
+
+    /**
+     * Sem isso, LoginActivity via o token antigo ainda salvo, achava que a sessão continuava
+     * válida e mandava de volta pra HomeActivity — que checava de novo, falhava de novo, e
+     * devolvia pra Login: loop infinito entre as duas telas sem gerar exceção nenhuma pra
+     * aparecer no logcat, sem jeito de o usuário logar de novo a não ser desinstalando o app.
+     */
+    private fun signOutLocally() {
+        tokenStore.clear()
+        _uiState.update { it.copy(isLoading = false, signedOut = true) }
     }
 
     /**
@@ -163,13 +183,18 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun onChatSendClick() {
         val chat = _uiState.value.chatState ?: return
         val content = chat.draftMessage.trim()
-        if (content.isEmpty()) return
+        if (content.isEmpty() && chat.pendingAttachments.isEmpty()) return
         viewModelScope.launch {
             updateChat(chat.ticketId) { it.copy(isSending = true, sendError = null) }
-            glpiRepository.sendFollowup(chat.ticketId, content).fold(
+            glpiRepository.sendFollowup(chat.ticketId, content, chat.pendingAttachments).fold(
                 onSuccess = { followup ->
                     updateChat(chat.ticketId) {
-                        it.copy(isSending = false, draftMessage = "", followups = it.followups + followup)
+                        it.copy(
+                            isSending = false,
+                            draftMessage = "",
+                            pendingAttachments = emptyList(),
+                            followups = it.followups + followup,
+                        )
                     }
                 },
                 onFailure = { error ->
@@ -179,18 +204,94 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Lê cada arquivo escolhido pro fim (nome, tipo, bytes) — o resto do app não lida com `Uri`/`ContentResolver`. */
+    fun onAttachmentsPicked(uris: List<Uri>) {
+        val chat = _uiState.value.chatState ?: return
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val resolver = getApplication<Application>().contentResolver
+            val results = uris.map { uri -> readAttachment(resolver, uri) }
+            val read = results.mapNotNull { it.attachment }
+            val oversized = results.mapNotNull { it.oversizedFileName }
+            updateChat(chat.ticketId) {
+                it.copy(
+                    pendingAttachments = it.pendingAttachments + read,
+                    attachmentError = oversized.firstOrNull()?.let { name ->
+                        "Arquivo muito grande (máx. ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB): $name"
+                    },
+                )
+            }
+        }
+    }
+
+    fun onChatRemoveAttachment(attachmentId: String) {
+        updateChat { it.copy(pendingAttachments = it.pendingAttachments.filterNot { a -> a.id == attachmentId }) }
+    }
+
+    private class AttachmentReadResult(val attachment: PendingAttachment?, val oversizedFileName: String?)
+
+    private suspend fun readAttachment(resolver: ContentResolver, uri: Uri): AttachmentReadResult =
+        withContext(Dispatchers.IO) {
+            val fileName = queryDisplayName(resolver, uri) ?: uri.lastPathSegment ?: "arquivo"
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return@withContext AttachmentReadResult(null, null)
+            if (bytes.size > MAX_ATTACHMENT_SIZE_BYTES) {
+                return@withContext AttachmentReadResult(null, fileName)
+            }
+            val mimeType = resolver.getType(uri) ?: "application/octet-stream"
+            AttachmentReadResult(PendingAttachment(fileName = fileName, mimeType = mimeType, bytes = bytes), null)
+        }
+
+    private fun queryDisplayName(resolver: ContentResolver, uri: Uri): String? {
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
+        }
+        return null
+    }
+
+    /**
+     * O GLPI não trata a mensagem de abertura do chamado (campo `content` do ticket) como um
+     * followup — sem isso ela nunca aparece no chat. Busca os dois em paralelo e prefixa a
+     * abertura na lista, já que o requerente do chamado é sempre o usuário logado.
+     */
     private fun loadFollowups(ticketId: Long) {
         viewModelScope.launch {
             updateChat(ticketId) { it.copy(isLoading = true, loadError = null) }
+            val ticketDeferred = async { glpiRepository.getTicket(ticketId) }
             glpiRepository.getFollowups(ticketId).fold(
                 onSuccess = { followups ->
-                    updateChat(ticketId) { it.copy(isLoading = false, followups = followups) }
+                    val opening = ticketDeferred.await().getOrNull()?.toOpeningMessageOrNull(
+                        authorName = _uiState.value.userName,
+                        authorEmail = _uiState.value.userEmail,
+                    )
+                    updateChat(ticketId) {
+                        it.copy(isLoading = false, followups = listOfNotNull(opening) + followups)
+                    }
                 },
                 onFailure = { error ->
+                    ticketDeferred.cancel()
                     updateChat(ticketId) { it.copy(isLoading = false, loadError = error.message) }
                 },
             )
         }
+    }
+
+    /**
+     * `id = 0L`: sentinela — os followups reais do GLPI começam em 1, então nunca colide.
+     * `isMine = true` sempre: a listagem de chamados já é escopada ao usuário logado, então quem
+     * abriu o chamado (dono do `content`) é sempre ele.
+     */
+    private fun GlpiTicketDetail.toOpeningMessageOrNull(authorName: String?, authorEmail: String?): GlpiFollowup? {
+        val text = content?.takeIf(String::isNotBlank) ?: return null
+        return GlpiFollowup(
+            id = 0L,
+            content = text,
+            date = date,
+            authorName = authorName,
+            authorEmail = authorEmail,
+            isMine = true,
+        )
     }
 
     private fun updateChat(transform: (ChatUiState) -> ChatUiState) {
@@ -203,5 +304,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val chat = state.chatState
             if (chat != null && chat.ticketId == ticketId) state.copy(chatState = transform(chat)) else state
         }
+    }
+
+    private companion object {
+        const val MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024
     }
 }
