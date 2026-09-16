@@ -1,45 +1,35 @@
 package com.raave.filament.ui.home
 
-import com.raave.filament.data.glpi.GlpiFollowup
-import com.raave.filament.data.glpi.GlpiTicketSummary
-import com.raave.filament.data.glpi.PendingAttachment
+import com.raave.filament.domain.model.AppError
+import com.raave.filament.domain.model.Ticket
+import com.raave.filament.domain.model.User
 
 enum class HomeTab { INICIO, CHAMADOS, CONTA }
 
 data class HomeUiState(
-    val isLoading: Boolean = true,
-    val userName: String? = null,
-    val userEmail: String? = null,
+    val isUserLoading: Boolean = true,
+    val user: User? = null,
+    /** Falha ao carregar a conta que NÃO encerra a sessão (rede, servidor): a tela oferece tentar de novo. */
+    val userError: AppError? = null,
     val selectedTab: HomeTab = HomeTab.INICIO,
     val isBlurEnabled: Boolean = false,
-    val signedOut: Boolean = false,
-    val isNewTicketDialogOpen: Boolean = false,
-    val newTicketName: String = "",
-    val newTicketContent: String = "",
-    val isCreatingTicket: Boolean = false,
-    val newTicketError: String? = null,
-    // Só confirma o que foi aberto nesta sessão — fica como retaguarda caso a listagem abaixo
-    // ainda não esteja no ar no backend (ver GlpiRepository.getTickets).
+    val newTicket: NewTicketFormState? = null,
+    // Só confirma o que foi aberto nesta sessão — fica como retaguarda caso a listagem ainda não
+    // reflita o chamado recém-criado.
     val lastCreatedTicketId: Long? = null,
-    val chamados: List<GlpiTicketSummary> = emptyList(),
-    val isChamadosLoading: Boolean = false,
-    val chamadosError: String? = null,
-    // Badge da aba Chamados. Preenchido a partir do total de [chamados] assim que a listagem
-    // carrega com sucesso; continua nulo enquanto isso não acontece.
-    val chamadosBadgeCount: Int? = null,
-    // Não nulo abre a tela de chat em tela cheia por cima das abas (ver HomeScreen).
-    val chatState: ChatUiState? = null,
-)
+    val tickets: List<Ticket> = emptyList(),
+    val isTicketsLoading: Boolean = false,
+    val ticketsError: AppError? = null,
+) {
+    /** Badge da aba Chamados: só aparece depois que a listagem carrega e se houver chamado. */
+    val ticketsBadgeCount: Int?
+        get() = tickets.size.takeIf { it > 0 }
+}
 
-data class ChatUiState(
-    val ticketId: Long,
-    val ticketName: String,
-    val followups: List<GlpiFollowup> = emptyList(),
-    val isLoading: Boolean = true,
-    val loadError: String? = null,
-    val draftMessage: String = "",
-    val pendingAttachments: List<PendingAttachment> = emptyList(),
-    val attachmentError: String? = null,
-    val isSending: Boolean = false,
-    val sendError: String? = null,
+/** Formulário de novo chamado; `null` em [HomeUiState.newTicket] significa diálogo fechado. */
+data class NewTicketFormState(
+    val title: String = "",
+    val description: String = "",
+    val isSubmitting: Boolean = false,
+    val error: AppError? = null,
 )

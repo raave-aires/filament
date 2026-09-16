@@ -1,15 +1,19 @@
 package com.raave.filament.data.network
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.IOException
+import com.raave.filament.di.IoDispatcher
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /** Um arquivo a enviar num POST multipart — ver [HttpClient.postMultipart]. */
-data class MultipartFile(
+class MultipartFile(
     val fieldName: String,
     val fileName: String,
     val mimeType: String,
@@ -25,20 +29,23 @@ data class MultipartFile(
  * seguintes — inclusive nas que não deveriam levar cookie nenhum (ex.: `sign-in/email-otp`,
  * que usa bearer token puro). O Better Auth trata a presença de um header `Cookie` como sinal
  * de sessão de browser e passa a exigir `Origin`, o que quebra esse client nativo.
- * O cookie de challenge do passkey (entre `generate-authenticate-options`/`-register-options` e
- * `verify-authentication`/`-registration`) é lido do `Set-Cookie` da resposta e reenviado como
- * `Cookie` manualmente, só nessas duas chamadas — ver [AuthRepository].
+ * O cookie de challenge do passkey (entre `generate-authenticate-options` e
+ * `verify-authentication`) é lido do `Set-Cookie` da resposta e reenviado como `Cookie`
+ * manualmente, só nessa chamada — ver [com.raave.filament.data.auth.BetterAuthRepository].
+ *
+ * Lança [ApiException] para status != 2xx, [java.io.IOException] para falha de rede e
+ * [org.json.JSONException] para corpo 2xx que não seja JSON — ver [apiCall].
  */
-object HttpClient {
-
-    private const val CONNECT_TIMEOUT_MS = 15_000
-    private const val READ_TIMEOUT_MS = 15_000
+@Singleton
+class HttpClient @Inject constructor(
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+) {
 
     suspend fun postJson(
         url: String,
         body: JSONObject,
         headers: Map<String, String> = emptyMap(),
-    ): ApiResponse = withContext(Dispatchers.IO) {
+    ): ApiResponse = withContext(ioDispatcher) {
         val connection = openConnection(url, "POST", headers)
         try {
             connection.doOutput = true
@@ -55,7 +62,7 @@ object HttpClient {
     suspend fun getJson(
         url: String,
         headers: Map<String, String> = emptyMap(),
-    ): ApiResponse = withContext(Dispatchers.IO) {
+    ): ApiResponse = withContext(ioDispatcher) {
         val connection = openConnection(url, "GET", headers)
         try {
             readResponse(connection)
@@ -70,10 +77,10 @@ object HttpClient {
         fields: Map<String, String>,
         files: List<MultipartFile>,
         headers: Map<String, String> = emptyMap(),
-    ): ApiResponse = withContext(Dispatchers.IO) {
+    ): ApiResponse = withContext(ioDispatcher) {
         // Único por requisição: um valor fixo deixaria a chamada vulnerável a um campo de texto
         // que por acaso contivesse a própria linha de boundary, corrompendo o corpo.
-        val boundary = "FilamentBoundary${java.util.UUID.randomUUID()}"
+        val boundary = "FilamentBoundary${UUID.randomUUID()}"
         val connection = openConnection(url, "POST", headers)
         try {
             connection.doOutput = true
@@ -96,7 +103,7 @@ object HttpClient {
     }
 
     private fun writeMultipartBody(
-        output: java.io.OutputStream,
+        output: OutputStream,
         boundary: String,
         fields: Map<String, String>,
         files: List<MultipartFile>,
@@ -110,7 +117,10 @@ object HttpClient {
         }
         files.forEach { file ->
             writeLine("--$boundary")
-            writeLine("Content-Disposition: form-data; name=\"${file.fieldName}\"; filename=\"${file.fileName}\"")
+            writeLine(
+                "Content-Disposition: form-data; name=\"${file.fieldName}\"; " +
+                    "filename=\"${file.fileName.asHeaderValue()}\"",
+            )
             writeLine("Content-Type: ${file.mimeType}")
             writeLine("")
             output.write(file.bytes)
@@ -120,22 +130,40 @@ object HttpClient {
     }
 
     private fun readResponse(connection: HttpURLConnection): ApiResponse {
-        try {
-            val statusCode = connection.responseCode
-            val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
-            val responseText = stream?.use { it.bufferedReader(StandardCharsets.UTF_8).readText() }.orEmpty()
-            val responseBody = if (responseText.isBlank()) JSONObject() else JSONObject(responseText)
+        val statusCode = connection.responseCode
+        val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
+        val responseText = stream?.use { it.bufferedReader(StandardCharsets.UTF_8).readText() }.orEmpty()
 
-            if (statusCode !in 200..299) {
-                // Formato confirmado com o backend: {"message": "...", "code": "..."} direto no corpo.
-                val message = responseBody.optString("message").takeIf { it.isNotBlank() }
-                    ?: responseText.ifBlank { "HTTP $statusCode" }
-                throw ApiException(statusCode, message)
-            }
-
-            return ApiResponse(statusCode, responseBody, connection.headerFields)
-        } catch (e: org.json.JSONException) {
-            throw IOException("Resposta inválida do servidor", e)
+        if (statusCode !in 200..299) {
+            // Corpo de erro pode não ser JSON (ex.: página HTML de um proxy num 502): leitura
+            // tolerante, pra ainda virar ApiException com o status em vez de erro de parse.
+            val errorBody = runCatching { JSONObject(responseText) }.getOrNull()
+            throw ApiException(
+                statusCode = statusCode,
+                code = errorBody?.optString("code")?.takeIf(String::isNotBlank),
+                message = errorBody?.optString("message")?.takeIf(String::isNotBlank) ?: "HTTP $statusCode",
+            )
         }
+
+        return ApiResponse(statusCode, parseSuccessBody(responseText), connection.headerFields)
+    }
+
+    private companion object {
+        const val CONNECT_TIMEOUT_MS = 15_000
+        const val READ_TIMEOUT_MS = 15_000
     }
 }
+
+/**
+ * Nome de arquivo vem do usuário: aspas fechariam o `filename="..."` antes da hora e quebra de
+ * linha injetaria headers no meio do corpo multipart.
+ */
+internal fun String.asHeaderValue(): String =
+    replace("\"", "%22").replace("\r", "").replace("\n", "")
+
+/**
+ * `null` literal é resposta legítima do Better Auth (ex.: get-session sem sessão válida devolve 200
+ * com corpo `null`) e vira objeto vazio. Qualquer outro corpo que não seja JSON lança JSONException.
+ */
+internal fun parseSuccessBody(responseText: String): JSONObject =
+    if (responseText.isBlank() || responseText.trim() == "null") JSONObject() else JSONObject(responseText)

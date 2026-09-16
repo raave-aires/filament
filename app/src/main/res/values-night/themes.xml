@@ -1,4 +1,7 @@
 <resources>
-    <!-- Window-level theme only; app content is themed entirely by MaterialExpressiveTheme in Compose. -->
-    <style name="Theme.Filament" parent="android:Theme.Material.NoActionBar" />
+    <!-- Ver values/themes.xml. -->
+    <style name="Theme.Filament" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowSplashScreenBackground">@color/window_background</item>
+    </style>
 </resources>

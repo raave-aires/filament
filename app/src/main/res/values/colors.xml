@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Espelham o background do ElinsaLightColorScheme/ElinsaDarkColorScheme (ui/theme/Color.kt).
+         Só pintam a janela antes do primeiro frame do Compose (splash e cold start). -->
+    <color name="window_background">#F6FAFE</color>
+</resources>

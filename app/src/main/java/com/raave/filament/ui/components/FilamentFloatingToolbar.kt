@@ -43,6 +43,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -156,9 +159,11 @@ private fun ToolbarNavItem(
     )
 
     // Cor e opacidade usam a spec de "effects" (sem overshoot) e o que se move usa a "spatial",
-    // como o Material 3 Expressive separa.
+    // como o Material 3 Expressive separa. Selecionado = surfaceContainer/onSurface, conforme
+    // FloatingToolbarTokens.VibrantButtonSelected* (antes era `surface`, que no escuro AMOLED
+    // virava uma pílula preta chapada sobre o primaryContainer).
     val containerColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+        targetValue = if (selected) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent,
         animationSpec = motionScheme.defaultEffectsSpec(),
         label = "navItemContainer",
     )
@@ -168,7 +173,10 @@ private fun ToolbarNavItem(
         label = "navItemContent",
     )
 
+    // Surface "selectable": o TalkBack anuncia a aba como selecionada, e o papel Tab a identifica
+    // como destino de navegação em vez de botão genérico.
     Surface(
+        selected = selected,
         onClick = {
             HapticUtil.performHeavyHaptic(view)
             onClick()
@@ -178,7 +186,8 @@ private fun ToolbarNavItem(
         contentColor = contentColor,
         modifier = Modifier
             .height(48.dp)
-            .width(itemWidth),
+            .width(itemWidth)
+            .semantics { role = Role.Tab },
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -191,9 +200,11 @@ private fun ToolbarNavItem(
             // A Box é fixada no tamanho do ícone para o badge transbordar só no desenho: se ele
             // entrasse na medição, empurraria o rótulo e quebraria a largura fixa da pílula.
             Box(modifier = Modifier.size(IconSize)) {
+                // O Text do rótulo fica sempre na árvore de semântica (só é recortado/transparente),
+                // então descrever o ícone também fazia o TalkBack ler o nome duas vezes.
                 Icon(
                     painter = painterResource(item.iconRes),
-                    contentDescription = label,
+                    contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                 )
                 val count = item.badgeCount

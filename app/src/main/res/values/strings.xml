@@ -22,6 +22,7 @@
     <string name="home_nav_chamados">Chamados</string>
     <string name="home_nav_conta">Conta</string>
     <string name="home_action_new_ticket">Novo chamado</string>
+    <string name="home_session_error_title">Não foi possível carregar sua conta</string>
     <string name="home_last_ticket_created">Último chamado aberto: #%1$d</string>
 
     <string name="new_ticket_dialog_title">Novo chamado</string>
@@ -46,4 +47,17 @@
     <string name="chat_action_send">Enviar</string>
     <string name="chat_action_attach">Anexar arquivo</string>
     <string name="chat_action_remove_attachment">Remover anexo</string>
+    <string name="error_network">Falha de conexão. Verifique sua internet e tente novamente.</string>
+    <string name="error_unauthorized">Sua sessão expirou. Entre novamente.</string>
+    <string name="error_unexpected_response">O servidor respondeu de um jeito inesperado. Tente novamente.</string>
+    <string name="error_generic">Algo deu errado. Tente novamente.</string>
+    <string name="error_invalid_email">Digite um e-mail válido</string>
+    <string name="error_invalid_code">Digite o código de 6 dígitos</string>
+    <string name="error_invalid_otp">Código incorreto. Confira e tente de novo.</string>
+    <string name="error_otp_expired">Este código expirou. Peça um novo.</string>
+    <string name="error_too_many_attempts">Muitas tentativas. Peça um novo código.</string>
+    <string name="error_attachment_too_large">Arquivo muito grande (máx. %2$d MB): %1$s</string>
+    <string name="error_attachment_unreadable">Não foi possível ler o arquivo escolhido.</string>
+    <string name="error_no_passkey">Nenhuma passkey encontrada neste aparelho.</string>
+    <string name="error_external_sign_in">Não foi possível concluir o login. Tente novamente.</string>
 </resources>
