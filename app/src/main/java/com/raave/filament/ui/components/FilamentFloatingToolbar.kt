@@ -4,21 +4,22 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarColors
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -51,7 +52,8 @@ import com.raave.filament.util.HapticUtil
 data class ToolbarItem(
     @param:DrawableRes val iconRes: Int,
     @param:StringRes val labelRes: Int,
-    val hasBadge: Boolean = false,
+    /** `null` ou zero escondem o badge; a partir de 1 o número aparece sobre o ícone (teto 99+). */
+    val badgeCount: Int? = null,
 )
 
 /**
@@ -98,6 +100,8 @@ fun FilamentFloatingToolbar(
         colors = colors,
         floatingActionButton = floatingActionButton ?: {},
         floatingActionButtonPosition = FloatingToolbarHorizontalFabPosition.End,
+        expandedShadowElevation = ToolbarShadowElevation,
+        collapsedShadowElevation = ToolbarShadowElevation,
     ) {
         items.forEachIndexed { index, item ->
             ToolbarNavItem(
@@ -115,10 +119,19 @@ fun FilamentFloatingToolbar(
     }
 }
 
+// O FAB do toolbar (FloatingToolbarDefaults.*FloatingActionButton) fixa elevação nível 2 e não
+// expõe parâmetro pra mudar, enquanto o container com FAB vem em nível 1 expandido e 0 recolhido —
+// era daí que vinha a sombra só no FAB. Igualar os dois no nível 2 faz barra e FAB lerem como uma
+// peça flutuante só, que é o que o Material especifica pro par.
+private val ToolbarShadowElevation = 3.dp
+
 private val IconSize = 24.dp
 private val ItemHorizontalPadding = 14.dp
 private val LabelSpacing = 8.dp
 private val IconOnlyWidth = IconSize + ItemHorizontalPadding * 2
+
+/** Deslocamento inicial do rótulo, pra ele emergir de trás do ícone em vez de só surgir no lugar. */
+private val LabelRevealSlide = 12.dp
 
 @Composable
 private fun ToolbarNavItem(
@@ -132,18 +145,14 @@ private fun ToolbarNavItem(
     val view = LocalView.current
     val motionScheme = MaterialTheme.motionScheme
     val showLabel = selected && labelSlotWidth > 0.dp
+    val labelSlot = LabelSpacing + labelSlotWidth
 
     // Uma única animação de Dp governa a largura da pílula, em vez de o layout do rótulo ser
     // recalculado quadro a quadro. O texto é medido uma vez e apenas recortado pela pílula.
     val itemWidth by animateDpAsState(
-        targetValue = if (showLabel) IconOnlyWidth + LabelSpacing + labelSlotWidth else IconOnlyWidth,
+        targetValue = if (showLabel) IconOnlyWidth + labelSlot else IconOnlyWidth,
         animationSpec = motionScheme.defaultSpatialSpec(),
         label = "navItemWidth",
-    )
-    val labelAlpha = animateFloatAsState(
-        targetValue = if (showLabel) 1f else 0f,
-        animationSpec = motionScheme.defaultEffectsSpec(),
-        label = "navItemLabelAlpha",
     )
 
     // Cor e opacidade usam a spec de "effects" (sem overshoot) e o que se move usa a "spatial",
@@ -179,19 +188,35 @@ private fun ToolbarNavItem(
                 .wrapContentWidth(align = Alignment.Start, unbounded = true)
                 .padding(horizontal = ItemHorizontalPadding),
         ) {
-            Box {
+            // A Box é fixada no tamanho do ícone para o badge transbordar só no desenho: se ele
+            // entrasse na medição, empurraria o rótulo e quebraria a largura fixa da pílula.
+            Box(modifier = Modifier.size(IconSize)) {
                 Icon(
                     painter = painterResource(item.iconRes),
                     contentDescription = label,
-                    modifier = Modifier.size(IconSize),
+                    modifier = Modifier.fillMaxSize(),
                 )
-                if (item.hasBadge) {
-                    Box(
+                val count = item.badgeCount
+                if (count != null && count > 0) {
+                    // Posicionado à mão em vez de via BadgedBox: o BadgedBox afasta o badge até
+                    // 12.dp da borda do ícone, mais do que os 8.dp que separam ícone e rótulo, e
+                    // com isso o "99+" cobria o começo do texto. Ancorado no canto, ele cresce
+                    // por cima do ícone e nunca encosta no rótulo.
+                    Badge(
                         modifier = Modifier
-                            .size(8.dp)
                             .align(Alignment.TopEnd)
-                            .background(MaterialTheme.colorScheme.error, CircleShape)
-                    )
+                            .offset(x = 2.dp, y = (-4).dp)
+                            // A Box acima fixa 24.dp, o que espremia o badge e quebrava o "99+"
+                            // em duas linhas. Medido solto, ele cresce pra esquerda por cima do
+                            // ícone e continua sem ocupar espaço no layout.
+                            .wrapContentSize(align = Alignment.TopEnd, unbounded = true),
+                    ) {
+                        Text(
+                            text = if (count > 99) "99+" else count.toString(),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.width(LabelSpacing))
@@ -200,9 +225,16 @@ private fun ToolbarNavItem(
                 style = labelStyle,
                 maxLines = 1,
                 softWrap = false,
-                // Leitura adiada: a opacidade muda só na fase de desenho, sem recompor nem
-                // refazer layout.
-                modifier = Modifier.graphicsLayer { alpha = labelAlpha.value },
+                // O rótulo é derivado da largura já animada da pílula em vez de ter uma animação
+                // própria: ele emerge junto com o espaço que abre e termina exatamente com ele.
+                // Antes eram duas molas soltas (largura na spatial, opacidade na effects), e o
+                // texto aparecia recortado no meio do caminho ou terminava fora de hora.
+                // Leitura na fase de desenho: não recompõe nem refaz layout.
+                modifier = Modifier.graphicsLayer {
+                    val revealed = ((itemWidth - IconOnlyWidth) / labelSlot).coerceIn(0f, 1f)
+                    alpha = revealed
+                    translationX = -(1f - revealed) * LabelRevealSlide.toPx()
+                },
             )
         }
     }
