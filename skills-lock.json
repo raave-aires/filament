@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "android-clean-architecture": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/android-clean-architecture/SKILL.md",
+      "computedHash": "80779b595f194a1ca3d59e36cbf4b29f426faaf90cf9c41dfd61a80442214890"
+    },
+    "android-ui-states-validation": {
+      "source": "krutikjain/android-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/android-ui-states-validation/SKILL.md",
+      "computedHash": "ce038fba87f34b4681f7d58feba2d6b8eb08e3933f22c9e997601cced6b2eda0"
+    },
+    "android-ux": {
+      "source": "rcosteira79/android-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/android-skills/skills/android-ux/SKILL.md",
+      "computedHash": "7482503dcfefff52892efd7d3f52a12ede1246cb47789fc1cd4c411c37de3b7b"
+    },
+    "argent-android-emulator-setup": {
+      "source": "software-mansion/argent",
+      "sourceType": "github",
+      "skillPath": "packages/skills/skills/argent-android-emulator-setup/SKILL.md",
+      "computedHash": "77179c52c11e23c91d01bb3302ed6ad94f4ea9960a9d010cd6833a03e55ebba7"
+    },
+    "material-3": {
+      "source": "hamen/material-3-skill",
+      "sourceType": "github",
+      "skillPath": "skills/material-3/SKILL.md",
+      "computedHash": "b675af544d7f335ca6dd2edb708930605484084354a4ef383362c9ec2b1717c7"
+    },
+    "material-3-expressive": {
+      "source": "albermonte/android-skills",
+      "sourceType": "github",
+      "skillPath": "skills/material-3-expressive/SKILL.md",
+      "computedHash": "38f5e6738efc6e03c053e08939d5a8cf9b34b76bf55008c97432420718dfcd0d"
+    },
+    "material-ui-theming": {
+      "source": "mui/material-ui",
+      "sourceType": "github",
+      "skillPath": "skills/material-ui-theming/SKILL.md",
+      "computedHash": "06f09d0152bf43a8f64d170a67418e7f33ac265bc995e2fed47adb5bcc979a54"
+    },
+    "mobile-android-design": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/ui-design/skills/mobile-android-design/SKILL.md",
+      "computedHash": "143a60d6a0744a5058adf984e3a64b75cd2ef3714a15557f4ff6fd95e39ff23a"
+    }
+  }
+}
