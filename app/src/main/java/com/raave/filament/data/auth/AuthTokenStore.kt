@@ -35,9 +35,27 @@ class AuthTokenStore @Inject constructor(
         _hasToken.value = true
     }
 
+    /** Nome e e-mail da conta da sessão, pra Home abrir sem rede. Apagados junto com o token. */
+    fun saveUser(name: String?, email: String?) {
+        prefs.edit {
+            putString(KEY_USER_NAME, name)
+            putString(KEY_USER_EMAIL, email)
+        }
+    }
+
+    /** `null` enquanto a conta desta sessão ainda não foi carregada do backend. */
+    fun cachedUser(): Pair<String?, String?>? {
+        if (!prefs.contains(KEY_USER_NAME) && !prefs.contains(KEY_USER_EMAIL)) return null
+        return prefs.getString(KEY_USER_NAME, null) to prefs.getString(KEY_USER_EMAIL, null)
+    }
+
     @Synchronized
     fun clear() {
-        prefs.edit { remove(KEY_TOKEN) }
+        prefs.edit {
+            remove(KEY_TOKEN)
+            remove(KEY_USER_NAME)
+            remove(KEY_USER_EMAIL)
+        }
         _token.value = null
         _hasToken.value = false
     }
@@ -55,5 +73,7 @@ class AuthTokenStore @Inject constructor(
         // Nome referenciado em res/xml/backup_rules.xml e data_extraction_rules.xml.
         const val PREFS_NAME = "filament_auth_prefs"
         const val KEY_TOKEN = "bearer_token"
+        const val KEY_USER_NAME = "user_name"
+        const val KEY_USER_EMAIL = "user_email"
     }
 }

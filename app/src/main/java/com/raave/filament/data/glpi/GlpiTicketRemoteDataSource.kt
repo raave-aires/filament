@@ -8,7 +8,6 @@ import com.raave.filament.domain.model.AppResult
 import com.raave.filament.domain.model.Attachment
 import com.raave.filament.domain.model.Message
 import com.raave.filament.domain.model.Ticket
-import com.raave.filament.domain.repository.TicketRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.json.JSONObject
@@ -20,15 +19,33 @@ private object GlpiPaths {
 }
 
 /**
+ * Chamados e mensagens no backend. Só rede: quem guarda e expõe os dados pro app é
+ * [com.raave.filament.data.ticket.OfflineFirstTicketRepository].
+ */
+interface TicketRemoteDataSource {
+    suspend fun getTickets(): AppResult<List<Ticket>>
+
+    /** Detalhe, com a mensagem de abertura em [Ticket.description]. */
+    suspend fun getTicket(id: Long): AppResult<Ticket>
+
+    /** Followups públicos, cronológicos. Com [afterId], só os de id maior. */
+    suspend fun getMessages(ticketId: Long, afterId: Long?): AppResult<List<Message>>
+
+    suspend fun createTicket(title: String, description: String): AppResult<Long>
+
+    suspend fun sendMessage(ticketId: Long, text: String, attachments: List<Attachment>): AppResult<Message>
+}
+
+/**
  * O app nunca fala com o GLPI diretamente, só com o `backbone` (que guarda o App-Token e a conta de
  * serviço do GLPI) — ver NOTES.md do backbone.
  */
 @Singleton
-class GlpiTicketRepository @Inject constructor(
+class GlpiTicketRemoteDataSource @Inject constructor(
     private val httpClient: HttpClient,
     private val authorizedApiCall: AuthorizedApiCall,
     @param:BaseUrl private val baseUrl: String,
-) : TicketRepository {
+) : TicketRemoteDataSource {
 
     override suspend fun getTickets(): AppResult<List<Ticket>> = authorizedApiCall { headers ->
         val tickets = httpClient.getJson(url = baseUrl + GlpiPaths.TICKETS, headers = headers)
@@ -50,14 +67,19 @@ class GlpiTicketRepository @Inject constructor(
             ).body.getLong("id")
         }
 
-    override suspend fun getMessages(ticketId: Long): AppResult<List<Message>> = authorizedApiCall { headers ->
-        val followups = httpClient.getJson(url = baseUrl + GlpiPaths.followups(ticketId), headers = headers)
-            .body.getJSONArray("followups")
-        (0 until followups.length())
-            .map { index -> followups.getJSONObject(index) }
-            .filterNot { it.isPrivateFollowup() }
-            .map { it.toMessage() }
-    }
+    override suspend fun getMessages(ticketId: Long, afterId: Long?): AppResult<List<Message>> =
+        authorizedApiCall { headers ->
+            val query = afterId?.let { "?after=$it" }.orEmpty()
+            val followups = httpClient.getJson(url = baseUrl + GlpiPaths.followups(ticketId) + query, headers = headers)
+                .body.getJSONArray("followups")
+            (0 until followups.length())
+                .map { index -> followups.getJSONObject(index) }
+                .filterNot { it.isPrivateFollowup() }
+                .map { it.toMessage() }
+                // Mesmo filtro do backend (`after`), repetido aqui: um backend sem suporte ao parâmetro
+                // devolve a lista inteira e o app continua recebendo só o que é novo.
+                .filter { afterId == null || it.id > afterId }
+        }
 
     override suspend fun sendMessage(
         ticketId: Long,

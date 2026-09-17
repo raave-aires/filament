@@ -286,6 +286,35 @@ Todas as rotas `/api/*` exigem sessão Better Auth (bearer), exceto o webhook.
 
 ---
 
+## Status da implementação
+
+**Fase A concluída (2026-09-17):** testes unitários e instrumentados, mais E2E no emulador.
+Diferenças em relação ao plano:
+- **Room 3** (`androidx.room3` 3.0.3, driver `AndroidSQLiteDriver`) em vez de Room 2.8, porque é a linha
+  estável recomendada. O banco é cache reconstruível, com migração destrutiva.
+- **Conta guardada:** nome e e-mail ficam em `AuthTokenStore`, apagados junto com o token. Sem isso a
+  Home mostrava a tela de erro sem rede e escondia o cache.
+- **Limpeza do cache em dois momentos:** no login, antes de gravar o token (é o que garante a troca de
+  conta), e ao perder a sessão.
+- **Adiados para a fase B:** `unreadCount`/`lastReadFollowupId` vindos do backend e a fila
+  `PendingReadEntity`.
+- **`kotlinx-coroutines-android` 1.11.0 declarado explícito:** o app resolvia 1.9.0 por transitividade
+  e os testes instrumentados quebravam.
+- **Abertura da conversa à la Telegram (2026-09-17):** a conversa já abre posicionada, sem indicador de
+  carregamento nem rolagem animada. O banco ganhou `tickets.lastReadMessageId` (versão 2), gravado por
+  `advanceReadMarker` (só avança) conforme as mensagens aparecem acima da barra de mensagem, e a tela
+  nasce no divisor "Novas mensagens" (primeira mensagem de outra pessoa depois do marcador) ou no fim.
+  Sem marcador — chamado nunca aberto neste aparelho — não há "novas" e a conversa abre no fim. Isso
+  antecipa parte da fase B: quando o backend expuser `lastReadFollowupId`, o marcador local passa a ser
+  sincronizado em vez de só local.
+- **Sincronização da conversa grava tudo numa transação:** antes, detalhe e mensagens iam em transações
+  separadas e, na primeira abertura, a lista se montava só com a mensagem de abertura e depois rolava
+  até o fim (o "flash" que se via ao abrir).
+- **Testes instrumentados rodam via `adb`:** o `connectedDebugAndroidTest` falha nesta máquina (o UTP
+  não consegue criar `C:\tmp`). Comandos:
+  `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, instalar os dois APKs e rodar
+  `adb shell am instrument -w com.raave.filament.test/androidx.test.runner.AndroidJUnitRunner`.
+
 ## Ordem de execução
 1. Enviar o contrato para a sessão do backbone.
 2. **Fase A (independe do backend):** Room, repositórios offline-first, `ObserveConversation`, UI

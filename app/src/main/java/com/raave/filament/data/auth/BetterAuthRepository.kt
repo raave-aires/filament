@@ -1,5 +1,6 @@
 package com.raave.filament.data.auth
 
+import com.raave.filament.data.local.SessionCacheCleaner
 import com.raave.filament.data.network.ApiResponse
 import com.raave.filament.data.network.HttpClient
 import com.raave.filament.data.network.apiCall
@@ -34,6 +35,7 @@ class BetterAuthRepository @Inject constructor(
     private val httpClient: HttpClient,
     private val tokenStore: AuthTokenStore,
     private val authorizedApiCall: AuthorizedApiCall,
+    private val sessionCacheCleaner: SessionCacheCleaner,
     @param:BaseUrl private val baseUrl: String,
 ) : AuthRepository {
 
@@ -110,7 +112,10 @@ class BetterAuthRepository @Inject constructor(
                 }
         }
         return when (result) {
-            is AppResult.Success -> result.value?.let { AppResult.Success(it) } ?: run {
+            is AppResult.Success -> result.value?.let { user ->
+                tokenStore.saveUser(user.name, user.email)
+                AppResult.Success(user)
+            } ?: run {
                 // Better Auth responde 200 com corpo `null` quando o token não corresponde mais a
                 // uma sessão: é sessão inválida, não erro de rede.
                 tokenStore.clear()
@@ -119,6 +124,9 @@ class BetterAuthRepository @Inject constructor(
             is AppResult.Failure -> result
         }
     }
+
+    override fun getCachedUser(): User? =
+        tokenStore.cachedUser()?.let { (name, email) -> User(name = name, email = email) }
 
     override suspend fun signOut() {
         // Melhor esforço no backend; logout local não pode travar por causa da rede.
@@ -133,6 +141,8 @@ class BetterAuthRepository @Inject constructor(
         val result = apiCall { block().header("set-auth-token") }
         return when (result) {
             is AppResult.Success -> result.value?.let { token ->
+                // Antes do token: a Home só abre com ele gravado, então nunca vê o cache de outra conta.
+                sessionCacheCleaner.clear()
                 tokenStore.save(token)
                 AppResult.Success(Unit)
             } ?: AppResult.Failure(AppError.UnexpectedResponse)

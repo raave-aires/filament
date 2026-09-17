@@ -2,6 +2,8 @@ package com.raave.filament.ui.chat
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,7 +29,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +39,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.InputChip
@@ -56,7 +58,12 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +93,9 @@ import com.raave.filament.ui.theme.FilamentTheme
 import com.raave.filament.ui.theme.filamentTextFieldColors
 import com.raave.filament.util.HapticUtil
 import java.time.Instant
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 /** Em tablet/paisagem a conversa fica numa coluna central em vez de espalhar bolhas pelas bordas. */
 private val ChatMaxWidth = 840.dp
@@ -106,7 +116,7 @@ fun ChatScreen(
     // rolar até o topo, longe das mensagens novas. Na primeira retomada a carga inicial já está em
     // andamento e o onRefresh a ignora.
     LifecycleResumeEffect(viewModel) {
-        viewModel.onRefresh()
+        viewModel.onResume()
         onPauseOrDispose {}
     }
     ChatScreenContent(
@@ -115,6 +125,7 @@ fun ChatScreen(
         onMoreClick = {},
         onRetryClick = viewModel::onRetryClick,
         onRefresh = viewModel::onRefresh,
+        onMessagesSeen = viewModel::onMessagesSeen,
         onMessageChange = viewModel::onMessageChange,
         onAttachmentsPicked = viewModel::onAttachmentsPicked,
         onRemoveAttachment = viewModel::onRemoveAttachment,
@@ -131,6 +142,7 @@ private fun ChatScreenContent(
     onMoreClick: () -> Unit,
     onRetryClick: () -> Unit,
     onRefresh: () -> Unit,
+    onMessagesSeen: (Long) -> Unit,
     onMessageChange: (String) -> Unit,
     onAttachmentsPicked: (List<String>) -> Unit,
     onRemoveAttachment: (String) -> Unit,
@@ -205,11 +217,23 @@ private fun ChatScreenContent(
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
             ) {
                 when {
-                    uiState.isLoading -> {
-                        LoadingIndicator(
-                            color = FilamentTheme.colors.primaryText,
-                            modifier = Modifier.align(Alignment.Center).padding(barsPadding),
+                    // Guardada no aparelho: aparece mesmo carregando ou sem rede.
+                    uiState.messages.isNotEmpty() -> {
+                        ChatMessageList(
+                            messages = uiState.messages,
+                            firstUnreadMessageId = uiState.firstUnreadMessageId,
+                            onMessagesSeen = onMessagesSeen,
+                            barsPadding = barsPadding,
+                            modifier = Modifier
+                                .widthIn(max = ChatMaxWidth)
+                                .fillMaxSize(),
                         )
+                    }
+                    // Antes de o banco responder, nada: são milissegundos, e carregando ou "sem mensagens"
+                    // ali só piscariam na abertura.
+                    !uiState.isConversationReady -> Unit
+                    uiState.isLoading -> {
+                        DelayedLoadingIndicator(modifier = Modifier.align(Alignment.Center).padding(barsPadding))
                     }
                     uiState.loadError != null -> {
                         ChatErrorState(
@@ -221,7 +245,7 @@ private fun ChatScreenContent(
                                 .padding(horizontal = 24.dp),
                         )
                     }
-                    uiState.messages.isEmpty() -> {
+                    else -> {
                         // Rolável (mesmo sem precisar) pra o pull-to-refresh receber o gesto.
                         Box(
                             contentAlignment = Alignment.Center,
@@ -238,15 +262,6 @@ private fun ChatScreenContent(
                                 modifier = Modifier.padding(horizontal = 24.dp),
                             )
                         }
-                    }
-                    else -> {
-                        ChatMessageList(
-                            messages = uiState.messages,
-                            barsPadding = barsPadding,
-                            modifier = Modifier
-                                .widthIn(max = ChatMaxWidth)
-                                .fillMaxSize(),
-                        )
                     }
                 }
             }
@@ -351,16 +366,57 @@ private fun ChatErrorState(error: AppError, onRetryClick: () -> Unit, modifier: 
 private val GroupedBubbleSpacing = 2.dp
 private val SeparateBubbleSpacing = 16.dp
 
+/** Chave do divisor de não lidas: texto, pra nunca colidir com os ids (Long) das mensagens. */
+private const val UnreadDividerKey = "unread-divider"
+
 @Composable
 private fun ChatMessageList(
     messages: List<Message>,
+    firstUnreadMessageId: Long?,
     barsPadding: PaddingValues,
+    onMessagesSeen: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    // O divisor entra como item antes da primeira não lida, então o índice dele na lista é o mesmo
+    // da mensagem que ele precede.
+    val dividerIndex = firstUnreadMessageId
+        ?.let { id -> messages.indexOfFirst { it.id == id } }
+        ?.takeIf { it >= 0 }
+    val lastRowIndex = messages.size - 1 + if (dividerIndex != null) 1 else 0
+
+    // Posição decidida antes do primeiro layout, como no Telegram: com mensagens novas, o divisor no
+    // topo e elas logo abaixo; sem, a última mensagem (a lista encosta no fim sozinha). Antes a lista
+    // nascia no topo e rolava animada até o fim — era o "flash" subindo ao abrir.
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = dividerIndex ?: lastRowIndex)
+
+    // Mensagem nova com a conversa aberta: acompanha só se a pessoa estava vendo o fim (a antiga
+    // última mensagem ainda na tela) ou se foi ela quem enviou. Rolada pra cima lendo algo, não pula.
+    val newest = messages.last()
+    var previousNewestId by remember { mutableLongStateOf(newest.id) }
+    LaunchedEffect(newest.id) {
+        val previousId = previousNewestId
+        previousNewestId = newest.id
+        if (previousId == newest.id) return@LaunchedEffect
+        val wasAtBottom = listState.layoutInfo.visibleItemsInfo.any { it.key == previousId }
+        if (wasAtBottom || newest.isMine) listState.animateScrollToItem(lastRowIndex)
     }
+
+    // Marca como vista a mensagem mais recente que já apareceu acima da barra de mensagem — as que só
+    // passam por trás das barras não contam.
+    val currentOnMessagesSeen by rememberUpdatedState(onMessagesSeen)
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            val visibleEnd = layout.viewportEndOffset - layout.afterContentPadding
+            layout.visibleItemsInfo
+                .filter { it.offset < visibleEnd }
+                .maxOfOrNull { (it.key as? Long) ?: 0L } ?: 0L
+        }
+            .filter { it > 0L }
+            .distinctUntilChanged()
+            .collect { currentOnMessagesSeen(it) }
+    }
+
     LazyColumn(
         state = listState,
         modifier = modifier.progressiveEdgeBlur(
@@ -375,26 +431,71 @@ private fun ChatMessageList(
             bottom = barsPadding.calculateBottomPadding() + 12.dp,
         ),
     ) {
-        itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
-            val previous = messages.getOrNull(index - 1)
-            // Mesmo grupo = mesmo remetente na mensagem anterior: junta as bolhas visualmente, como
-            // um parágrafo por pessoa. Mensagens próprias agrupam só por isMine (a de abertura do
-            // chamado não traz nome); recebidas, também pelo nome de quem respondeu.
-            val sameGroupAsPrevious = previous != null &&
-                previous.isMine == message.isMine &&
-                (message.isMine || previous.authorName == message.authorName)
-            if (index > 0) {
-                Spacer(modifier = Modifier.height(if (sameGroupAsPrevious) GroupedBubbleSpacing else SeparateBubbleSpacing))
+        messages.forEachIndexed { index, message ->
+            if (index == dividerIndex) {
+                item(key = UnreadDividerKey) { UnreadDivider() }
             }
-            ChatBubble(
-                message = message,
-                // Nome só na primeira bolha do grupo — repetir em toda mensagem do mesmo remetente
-                // era ruído, não informação.
-                showAuthorLabel = !message.isMine && !sameGroupAsPrevious && !message.authorName.isNullOrBlank(),
-            )
+            item(key = message.id) {
+                val previous = messages.getOrNull(index - 1)
+                // Mesmo grupo = mesmo remetente na mensagem anterior: junta as bolhas visualmente, como
+                // um parágrafo por pessoa. Mensagens próprias agrupam só por isMine (a de abertura do
+                // chamado não traz nome); recebidas, também pelo nome de quem respondeu. O divisor de
+                // não lidas quebra o grupo.
+                val sameGroupAsPrevious = previous != null &&
+                    index != dividerIndex &&
+                    previous.isMine == message.isMine &&
+                    (message.isMine || previous.authorName == message.authorName)
+                if (index > 0 && index != dividerIndex) {
+                    Spacer(modifier = Modifier.height(if (sameGroupAsPrevious) GroupedBubbleSpacing else SeparateBubbleSpacing))
+                }
+                ChatBubble(
+                    message = message,
+                    // Nome só na primeira bolha do grupo — repetir em toda mensagem do mesmo remetente
+                    // era ruído, não informação.
+                    showAuthorLabel = !message.isMine && !sameGroupAsPrevious && !message.authorName.isNullOrBlank(),
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun UnreadDivider() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = FilamentTheme.colors.border)
+        Text(
+            text = stringResource(R.string.chat_unread_divider),
+            style = MaterialTheme.typography.labelMedium,
+            color = FilamentTheme.colors.primaryText,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = FilamentTheme.colors.border)
+    }
+}
+
+/**
+ * Só aparece se a espera passar de um instante: conversa nunca aberta com rede rápida chega antes
+ * disso, e um indicador que pisca por um quadro parece travamento.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun DelayedLoadingIndicator(modifier: Modifier = Modifier) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(LoadingIndicatorDelayMillis)
+        visible = true
+    }
+    AnimatedVisibility(visible = visible, enter = fadeIn(), modifier = modifier) {
+        LoadingIndicator(color = FilamentTheme.colors.primaryText)
+    }
+}
+
+private const val LoadingIndicatorDelayMillis = 300L
 
 @Composable
 private fun ChatBubble(message: Message, showAuthorLabel: Boolean) {
@@ -624,6 +725,7 @@ private fun ChatScreenPreview() {
         ChatScreenContent(
             uiState = ChatUiState(
                 ticketTitle = "Impressora do 3º andar sem tinta",
+                isConversationReady = true,
                 isLoading = false,
                 messages = listOf(
                     Message(
@@ -647,6 +749,7 @@ private fun ChatScreenPreview() {
             onMoreClick = {},
             onRetryClick = {},
             onRefresh = {},
+            onMessagesSeen = {},
             onMessageChange = {},
             onAttachmentsPicked = {},
             onRemoveAttachment = {},

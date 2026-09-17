@@ -5,29 +5,33 @@ import androidx.lifecycle.viewModelScope
 import com.raave.filament.domain.model.AppError
 import com.raave.filament.domain.model.AppResult
 import com.raave.filament.domain.model.Attachment
+import com.raave.filament.domain.model.Conversation
 import com.raave.filament.domain.repository.AttachmentRepository
 import com.raave.filament.domain.repository.TicketRepository
-import com.raave.filament.domain.usecase.LoadConversationUseCase
+import com.raave.filament.domain.usecase.ObserveConversationUseCase
 import com.raave.filament.ui.navigation.ChatRoute
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Conversa de um chamado. Um ViewModel por entrada de navegação: abrir outro chamado cria outra
- * instância, então não há mais a checagem de "o chat aberto ainda é o mesmo chamado" que existia
- * quando o chat era um estado dentro da Home.
+ * Conversa de um chamado. As mensagens vêm do que está guardado no aparelho (aparecem na hora, mesmo
+ * sem rede); as sincronizações só atualizam esse cache. Um ViewModel por entrada de navegação.
  */
 @HiltViewModel(assistedFactory = ChatViewModel.Factory::class)
 class ChatViewModel @AssistedInject constructor(
     @Assisted private val route: ChatRoute,
-    private val loadConversation: LoadConversationUseCase,
+    observeConversation: ObserveConversationUseCase,
     private val ticketRepository: TicketRepository,
     private val attachmentRepository: AttachmentRepository,
 ) : ViewModel() {
@@ -40,36 +44,123 @@ class ChatViewModel @AssistedInject constructor(
     private val _uiState = MutableStateFlow(ChatUiState(ticketTitle = route.ticketTitle))
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    private val conversation = observeConversation(route.ticketId)
+
     /** Anexos com os bytes, na mesma ordem de [ChatUiState.attachments]. */
     private var pendingAttachments: List<Attachment> = emptyList()
 
+    private var syncJob: Job? = null
+
+    /**
+     * A primeira sincronização gravou mensagens, mas o flow observado ainda não as entregou: o
+     * carregamento só termina quando elas chegam. Sem isso a tela piscava "sem mensagens" nesse meio.
+     */
+    private var awaitingMessages = false
+
+    /** O divisor de não lidas é decidido uma vez, quando a conversa aparece pela primeira vez. */
+    private var unreadAnchorResolved = false
+
+    /** Maior mensagem já informada como vista nesta tela: evita regravar o marcador a cada rolagem. */
+    private var lastSeenReported = 0L
+
     init {
+        conversation
+            .onEach { conversation ->
+                val messages = conversation.messages
+                val arrived = awaitingMessages && messages.isNotEmpty()
+                if (arrived) awaitingMessages = false
+                val anchor = if (!unreadAnchorResolved && messages.isNotEmpty()) {
+                    unreadAnchorResolved = true
+                    lastSeenReported = conversation.lastReadMessageId ?: 0L
+                    firstUnreadMessageId(conversation)
+                } else {
+                    null
+                }
+                _uiState.update { state ->
+                    // Com a conversa guardada na tela, uma falha anterior deixa de ser tela de erro e
+                    // vira o aviso discreto da barra de mensagem.
+                    val hasMessages = messages.isNotEmpty()
+                    state.copy(
+                        messages = messages,
+                        isConversationReady = true,
+                        firstUnreadMessageId = anchor ?: state.firstUnreadMessageId,
+                        isLoading = if (arrived) false else state.isLoading,
+                        loadError = if (hasMessages) null else state.loadError,
+                        refreshError = if (hasMessages && state.loadError != null) state.loadError else state.refreshError,
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
         load()
+    }
+
+    /**
+     * Primeira mensagem de outra pessoa depois da última vista. Sem marcador (conversa nunca aberta
+     * neste aparelho) não há "novas": a conversa abre no fim.
+     */
+    private fun firstUnreadMessageId(conversation: Conversation): Long? {
+        val lastRead = conversation.lastReadMessageId ?: return null
+        return conversation.messages.firstOrNull { it.id > lastRead && !it.isMine }?.id
+    }
+
+    /** A tela informa a mensagem mais recente que já apareceu; o marcador só avança. */
+    fun onMessagesSeen(messageId: Long) {
+        if (messageId <= lastSeenReported) return
+        lastSeenReported = messageId
+        viewModelScope.launch { ticketRepository.markRead(route.ticketId, messageId) }
     }
 
     fun onRetryClick() = load()
 
-    fun onRefresh() {
-        val state = _uiState.value
-        // Durante o envio a lista vai ganhar a mensagem nova; atualizar ao mesmo tempo só cria corrida.
-        if (state.isRefreshing || state.isLoading || state.isSending) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true, refreshError = null) }
-            when (val result = loadConversation(route.ticketId)) {
-                is AppResult.Success -> _uiState.update {
-                    it.copy(isRefreshing = false, messages = result.value, loadError = null)
+    /** Abertura e "tentar de novo": traz só o que é novo desde a última mensagem guardada. */
+    private fun load() {
+        if (syncJob?.isActive == true) return
+        syncJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, loadError = null) }
+            when (val result = ticketRepository.syncConversation(route.ticketId, full = false)) {
+                is AppResult.Success -> finishLoading()
+                is AppResult.Failure -> _uiState.update { state ->
+                    if (state.messages.isEmpty()) {
+                        state.copy(isLoading = false, loadError = result.error)
+                    } else {
+                        state.copy(isLoading = false, refreshError = result.error)
+                    }
                 }
-                is AppResult.Failure -> _uiState.update { it.copy(isRefreshing = false, refreshError = result.error) }
             }
         }
     }
 
-    private fun load() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, loadError = null) }
-            when (val result = loadConversation(route.ticketId)) {
-                is AppResult.Success -> _uiState.update { it.copy(isLoading = false, messages = result.value) }
-                is AppResult.Failure -> _uiState.update { it.copy(isLoading = false, loadError = result.error) }
+    private suspend fun finishLoading() {
+        val hasMessages = conversation.first().messages.isNotEmpty()
+        if (hasMessages && _uiState.value.messages.isEmpty()) {
+            awaitingMessages = true
+        } else {
+            _uiState.update { it.copy(isLoading = false, refreshError = null) }
+        }
+    }
+
+    /**
+     * Volta ao app: respostas do atendimento podem ter chegado enquanto estava fora. Busca só as
+     * novas, sem indicador — o pull-to-refresh continua como gesto manual.
+     */
+    fun onResume() {
+        if (syncJob?.isActive == true) return
+        syncJob = viewModelScope.launch {
+            when (val result = ticketRepository.syncConversation(route.ticketId, full = false)) {
+                is AppResult.Success -> _uiState.update { it.copy(refreshError = null) }
+                is AppResult.Failure -> _uiState.update { it.copy(refreshError = result.error) }
+            }
+        }
+    }
+
+    /** Pull-to-refresh: relê a conversa inteira pra pegar também edição e exclusão feitas no GLPI. */
+    fun onRefresh() {
+        if (syncJob?.isActive == true) return
+        syncJob = viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true, refreshError = null) }
+            when (val result = ticketRepository.syncConversation(route.ticketId, full = true)) {
+                is AppResult.Success -> _uiState.update { it.copy(isRefreshing = false, loadError = null) }
+                is AppResult.Failure -> _uiState.update { it.copy(isRefreshing = false, refreshError = result.error) }
             }
         }
     }
@@ -100,19 +191,11 @@ class ChatViewModel @AssistedInject constructor(
         val attachments = pendingAttachments
         viewModelScope.launch {
             _uiState.update { it.copy(isSending = true, sendError = null) }
+            // A mensagem enviada é guardada pelo repositório e chega pela conversa observada.
             when (val result = ticketRepository.sendMessage(route.ticketId, text, attachments)) {
                 is AppResult.Success -> {
                     setAttachments(emptyList(), attachmentError = null)
-                    _uiState.update {
-                        // Sem duplicar se uma atualização concluída no meio do envio já trouxe a mensagem:
-                        // id repetido na LazyColumn derruba o app.
-                        val sent = result.value
-                        it.copy(
-                            isSending = false,
-                            draftMessage = "",
-                            messages = it.messages.filterNot { message -> message.id == sent.id } + sent,
-                        )
-                    }
+                    _uiState.update { it.copy(isSending = false, draftMessage = "") }
                 }
                 is AppResult.Failure -> _uiState.update { it.copy(isSending = false, sendError = result.error) }
             }

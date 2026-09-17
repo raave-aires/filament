@@ -46,6 +46,7 @@
     <string name="chat_error_title">Não foi possível carregar as mensagens</string>
     <string name="chat_input_placeholder">Escreva uma mensagem</string>
     <string name="chat_action_send">Enviar</string>
+    <string name="chat_unread_divider">Novas mensagens</string>
     <string name="chat_action_attach">Anexar arquivo</string>
     <string name="chat_action_remove_attachment">Remover anexo</string>
     <string name="error_network">Falha de conexão. Verifique sua internet e tente novamente.</string>

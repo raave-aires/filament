@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raave.filament.domain.model.AppError
 import com.raave.filament.domain.model.AppResult
-import com.raave.filament.domain.model.Ticket
 import com.raave.filament.domain.repository.AuthRepository
 import com.raave.filament.domain.repository.TicketRepository
 import com.raave.filament.domain.usecase.CreateTicketUseCase
@@ -13,6 +12,9 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -30,18 +32,39 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    /**
+     * A primeira sincronização gravou chamados, mas o flow observado ainda não os entregou: o
+     * carregamento só termina quando eles chegam. Sem isso a tela piscava "Nenhum chamado ainda".
+     */
+    private var awaitingTickets = false
+
     init {
+        // Lista vem do aparelho: aparece na hora, mesmo sem rede; a sincronização só a atualiza.
+        ticketRepository.observeTickets()
+            .onEach { tickets ->
+                val arrived = awaitingTickets && tickets.isNotEmpty()
+                if (arrived) awaitingTickets = false
+                _uiState.update {
+                    it.copy(tickets = tickets, isTicketsLoading = if (arrived) false else it.isTicketsLoading)
+                }
+            }
+            .launchIn(viewModelScope)
         loadUser()
         loadTickets()
     }
 
     private fun loadUser() {
+        // Conta guardada da sessão: a Home abre na hora, inclusive sem rede, e a carga só a atualiza.
+        val cachedUser = authRepository.getCachedUser()
         viewModelScope.launch {
-            _uiState.update { it.copy(isUserLoading = true, userError = null) }
+            _uiState.update {
+                it.copy(isUserLoading = cachedUser == null, user = cachedUser ?: it.user, userError = null)
+            }
             when (val result = authRepository.getCurrentUser()) {
                 is AppResult.Success -> _uiState.update { it.copy(isUserLoading = false, user = result.value) }
                 // Sessão inválida: a tela está prestes a ser trocada pelo login, não há erro a mostrar.
-                is AppResult.Failure -> if (result.error != AppError.Unauthorized) {
+                // Com a conta guardada, falha de rede não bloqueia a Home.
+                is AppResult.Failure -> if (result.error != AppError.Unauthorized && cachedUser == null) {
                     _uiState.update { it.copy(isUserLoading = false, userError = result.error) }
                 }
             }
@@ -65,8 +88,20 @@ class HomeViewModel @Inject constructor(
     fun loadTickets() {
         viewModelScope.launch {
             _uiState.update { it.copy(isTicketsLoading = true, ticketsError = null) }
-            val result = ticketRepository.getTickets()
-            _uiState.update { it.copy(isTicketsLoading = false).withTicketsResult(result) }
+            when (val result = ticketRepository.refreshTickets()) {
+                is AppResult.Success -> finishTicketsLoading()
+                // A lista guardada continua na tela: o erro aparece acima dela em vez de esvaziá-la.
+                is AppResult.Failure -> _uiState.update { it.copy(isTicketsLoading = false, ticketsError = result.error) }
+            }
+        }
+    }
+
+    private suspend fun finishTicketsLoading() {
+        val hasTickets = ticketRepository.observeTickets().first().isNotEmpty()
+        if (hasTickets && _uiState.value.tickets.isEmpty()) {
+            awaitingTickets = true
+        } else {
+            _uiState.update { it.copy(isTicketsLoading = false) }
         }
     }
 
@@ -74,15 +109,11 @@ class HomeViewModel @Inject constructor(
         if (_uiState.value.isTicketsRefreshing) return
         viewModelScope.launch {
             _uiState.update { it.copy(isTicketsRefreshing = true) }
-            val result = ticketRepository.getTickets()
-            _uiState.update { it.copy(isTicketsRefreshing = false).withTicketsResult(result) }
+            when (val result = ticketRepository.refreshTickets()) {
+                is AppResult.Success -> _uiState.update { it.copy(isTicketsRefreshing = false, ticketsError = null) }
+                is AppResult.Failure -> _uiState.update { it.copy(isTicketsRefreshing = false, ticketsError = result.error) }
+            }
         }
-    }
-
-    /** Falha mantém a lista já exibida: a tela mostra o erro acima dela em vez de esvaziá-la. */
-    private fun HomeUiState.withTicketsResult(result: AppResult<List<Ticket>>): HomeUiState = when (result) {
-        is AppResult.Success -> copy(tickets = result.value, ticketsError = null)
-        is AppResult.Failure -> copy(ticketsError = result.error)
     }
 
     fun onNewTicketClick() {

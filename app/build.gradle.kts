@@ -6,6 +6,12 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.room3)
+}
+
+// Esquemas exportados versionados no git: base pra escrever migrações e testá-las.
+room3 {
+    schemaDirectory("$projectDir/schemas")
 }
 
 // Permite sobrescrever a URL base da API por máquina, via local.properties (gitignored).
@@ -76,6 +82,10 @@ dependencies {
     implementation(libs.kotlinx.serialization.core)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.room3.runtime)
+    implementation(libs.androidx.sqlite.framework)
+    ksp(libs.androidx.room3.compiler)
     implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.credentials)
@@ -88,4 +98,6 @@ dependencies {
     testImplementation(libs.org.json)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
 }

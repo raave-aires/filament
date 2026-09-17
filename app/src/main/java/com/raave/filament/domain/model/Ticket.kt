@@ -5,6 +5,7 @@ import java.time.Instant
 /**
  * Chamado do GLPI. [status] já vem traduzido pelo GLPI (ex.: "Novo") e é exibido como está.
  * [description] é a mensagem de abertura; só vem preenchida no detalhe do chamado, não na listagem.
+ * [lastReadMessageId] é a última mensagem que o usuário já viu neste aparelho (`null` se nunca abriu).
  */
 data class Ticket(
     val id: Long,
@@ -12,4 +13,5 @@ data class Ticket(
     val status: String,
     val openedAt: Instant?,
     val description: String? = null,
+    val lastReadMessageId: Long? = null,
 )

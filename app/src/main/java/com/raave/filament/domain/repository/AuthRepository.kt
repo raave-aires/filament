@@ -29,6 +29,9 @@ interface AuthRepository {
 
     suspend fun getCurrentUser(): AppResult<User>
 
+    /** Última conta carregada nesta sessão, guardada no aparelho; `null` se ainda não houve carga. */
+    fun getCachedUser(): User?
+
     /** Sempre encerra a sessão local, mesmo que o backend não responda. */
     suspend fun signOut()
 }
