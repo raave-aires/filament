@@ -47,8 +47,10 @@ Não é outro sistema de chamados: é uma interface para o GLPI que a Elinsa já
 ## Brand Commitments
 
 - Nome do produto: **Filament**, para a **Elinsa**. Logo em `app/src/main/res/drawable/ic_logo.xml`.
-- A cor vem sempre da marca Elinsa (azul `#24A3DD` como semente), **nunca** do dynamic color do Android. No tema escuro, o fundo é preto AMOLED.
-- Linguagem Material 3 Expressive.
+- Tema no estilo shadcn/ui: paleta **"Mist"** (tokens em `ui/theme/Color.kt`, claro e escuro) e escala de raio do shadcn (`--radius` 10). Substituiu a paleta própria derivada do azul da Elinsa e o fundo preto AMOLED (decisão de 2026-09-17).
+- Nunca dynamic color do Android.
+- Superfícies principais (barra de navegação, barras do chat, faixa da status bar) em **vidro fosco**: conteúdo desfocado por trás + tinta translúcida + contorno de 1px.
+- Componentes, estados de carregamento e animações seguem o padrão Compose/Material 3 (Expressive); só o tema é shadcn.
 
 ## Evidence on Hand
 

@@ -6,9 +6,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.raave.filament.data.auth.AuthCallback
+import com.raave.filament.ui.components.LocalBlurEnabled
 import com.raave.filament.ui.navigation.ExternalAuthCallback
 import com.raave.filament.ui.navigation.FilamentNavigation
 import com.raave.filament.ui.theme.FilamentTheme
@@ -34,11 +37,18 @@ class MainActivity : ComponentActivity() {
             FilamentTheme {
                 val isSignedIn by viewModel.isSignedIn.collectAsStateWithLifecycle()
                 val authCallback by viewModel.authCallback.collectAsStateWithLifecycle()
-                FilamentNavigation(
-                    isSignedIn = isSignedIn,
-                    authCallback = authCallback,
-                    onAuthCallbackConsumed = viewModel::onAuthCallbackConsumed,
-                )
+                val isBlurEnabled by viewModel.isBlurEnabled.collectAsStateWithLifecycle()
+                LifecycleResumeEffect(Unit) {
+                    viewModel.refreshBlurSupport()
+                    onPauseOrDispose {}
+                }
+                CompositionLocalProvider(LocalBlurEnabled provides isBlurEnabled) {
+                    FilamentNavigation(
+                        isSignedIn = isSignedIn,
+                        authCallback = authCallback,
+                        onAuthCallbackConsumed = viewModel::onAuthCallbackConsumed,
+                    )
+                }
             }
         }
     }

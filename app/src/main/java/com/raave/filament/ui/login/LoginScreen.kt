@@ -66,6 +66,8 @@ import com.raave.filament.domain.usecase.VerifyEmailCodeUseCase
 import com.raave.filament.ui.common.toMessage
 import com.raave.filament.ui.navigation.ExternalAuthCallback
 import com.raave.filament.ui.theme.FilamentTheme
+import com.raave.filament.ui.theme.filamentTextButtonColors
+import com.raave.filament.ui.theme.filamentTextFieldColors
 import com.raave.filament.util.HapticUtil
 
 /**
@@ -308,6 +310,7 @@ private fun EmailStep(
         },
         singleLine = true,
         enabled = !uiState.isBusy,
+        colors = filamentTextFieldColors(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Send),
         keyboardActions = KeyboardActions(
             onSend = { if (uiState.email.isNotBlank() && !uiState.isBusy) onSendCodeClick() },
@@ -359,6 +362,7 @@ private fun CodeStep(
         label = { Text(stringResource(R.string.login_code_hint)) },
         singleLine = true,
         enabled = !uiState.isBusy,
+        colors = filamentTextFieldColors(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(
             onDone = { if (uiState.code.length == codeLength && !uiState.isBusy) onVerifyCodeClick() },
@@ -388,6 +392,7 @@ private fun CodeStep(
     TextButton(
         onClick = onChangeEmailClick,
         enabled = !uiState.isBusy,
+        colors = filamentTextButtonColors(),
         modifier = Modifier.padding(top = 4.dp),
     ) {
         Text(stringResource(R.string.login_action_change_email))

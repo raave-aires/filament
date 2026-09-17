@@ -1,7 +1,7 @@
 <resources>
     <!-- Window-level theme only; app content is themed entirely by MaterialExpressiveTheme in Compose.
          O fundo da janela e da splash acompanham o ColorScheme para não piscar cinza/branco antes
-         do primeiro frame (no OneUI o fallback padrão é cinza-escuro, não o preto AMOLED). -->
+         do primeiro frame (no OneUI o fallback padrão é cinza-escuro, não o fundo do tema). -->
     <style name="Theme.Filament" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:windowSplashScreenBackground">@color/window_background</item>

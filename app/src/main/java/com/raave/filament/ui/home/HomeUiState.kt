@@ -12,13 +12,14 @@ data class HomeUiState(
     /** Falha ao carregar a conta que NÃO encerra a sessão (rede, servidor): a tela oferece tentar de novo. */
     val userError: AppError? = null,
     val selectedTab: HomeTab = HomeTab.INICIO,
-    val isBlurEnabled: Boolean = false,
     val newTicket: NewTicketFormState? = null,
     // Só confirma o que foi aberto nesta sessão — fica como retaguarda caso a listagem ainda não
     // reflita o chamado recém-criado.
     val lastCreatedTicketId: Long? = null,
     val tickets: List<Ticket> = emptyList(),
     val isTicketsLoading: Boolean = false,
+    /** Atualização puxada pelo usuário (pull-to-refresh), distinta da carga inicial. */
+    val isTicketsRefreshing: Boolean = false,
     val ticketsError: AppError? = null,
 ) {
     /** Badge da aba Chamados: só aparece depois que a listagem carrega e se houver chamado. */

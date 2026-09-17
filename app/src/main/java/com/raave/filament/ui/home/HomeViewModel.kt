@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raave.filament.domain.model.AppError
 import com.raave.filament.domain.model.AppResult
+import com.raave.filament.domain.model.Ticket
 import com.raave.filament.domain.repository.AuthRepository
 import com.raave.filament.domain.repository.TicketRepository
 import com.raave.filament.domain.usecase.CreateTicketUseCase
-import com.raave.filament.util.DeviceCapabilities
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +25,6 @@ class HomeViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val ticketRepository: TicketRepository,
     private val createTicket: CreateTicketUseCase,
-    private val deviceCapabilities: DeviceCapabilities,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -34,7 +33,6 @@ class HomeViewModel @Inject constructor(
     init {
         loadUser()
         loadTickets()
-        refreshBlurState()
     }
 
     private fun loadUser() {
@@ -56,11 +54,6 @@ class HomeViewModel @Inject constructor(
         if (_uiState.value.ticketsError != null) loadTickets()
     }
 
-    /** Reavaliado a cada retomada da tela: o modo de economia de bateria pode mudar com o app aberto. */
-    fun refreshBlurState() {
-        _uiState.update { it.copy(isBlurEnabled = deviceCapabilities.isBlurSupported()) }
-    }
-
     fun onTabSelected(tab: HomeTab) {
         _uiState.update { it.copy(selectedTab = tab) }
     }
@@ -72,11 +65,24 @@ class HomeViewModel @Inject constructor(
     fun loadTickets() {
         viewModelScope.launch {
             _uiState.update { it.copy(isTicketsLoading = true, ticketsError = null) }
-            when (val result = ticketRepository.getTickets()) {
-                is AppResult.Success -> _uiState.update { it.copy(isTicketsLoading = false, tickets = result.value) }
-                is AppResult.Failure -> _uiState.update { it.copy(isTicketsLoading = false, ticketsError = result.error) }
-            }
+            val result = ticketRepository.getTickets()
+            _uiState.update { it.copy(isTicketsLoading = false).withTicketsResult(result) }
         }
+    }
+
+    fun onTicketsRefresh() {
+        if (_uiState.value.isTicketsRefreshing) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTicketsRefreshing = true) }
+            val result = ticketRepository.getTickets()
+            _uiState.update { it.copy(isTicketsRefreshing = false).withTicketsResult(result) }
+        }
+    }
+
+    /** Falha mantém a lista já exibida: a tela mostra o erro acima dela em vez de esvaziá-la. */
+    private fun HomeUiState.withTicketsResult(result: AppResult<List<Ticket>>): HomeUiState = when (result) {
+        is AppResult.Success -> copy(tickets = result.value, ticketsError = null)
+        is AppResult.Failure -> copy(ticketsError = result.error)
     }
 
     fun onNewTicketClick() {

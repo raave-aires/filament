@@ -49,6 +49,21 @@ class ChatViewModel @AssistedInject constructor(
 
     fun onRetryClick() = load()
 
+    fun onRefresh() {
+        val state = _uiState.value
+        // Durante o envio a lista vai ganhar a mensagem nova; atualizar ao mesmo tempo só cria corrida.
+        if (state.isRefreshing || state.isLoading || state.isSending) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true, refreshError = null) }
+            when (val result = loadConversation(route.ticketId)) {
+                is AppResult.Success -> _uiState.update {
+                    it.copy(isRefreshing = false, messages = result.value, loadError = null)
+                }
+                is AppResult.Failure -> _uiState.update { it.copy(isRefreshing = false, refreshError = result.error) }
+            }
+        }
+    }
+
     private fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadError = null) }
@@ -89,7 +104,14 @@ class ChatViewModel @AssistedInject constructor(
                 is AppResult.Success -> {
                     setAttachments(emptyList(), attachmentError = null)
                     _uiState.update {
-                        it.copy(isSending = false, draftMessage = "", messages = it.messages + result.value)
+                        // Sem duplicar se uma atualização concluída no meio do envio já trouxe a mensagem:
+                        // id repetido na LazyColumn derruba o app.
+                        val sent = result.value
+                        it.copy(
+                            isSending = false,
+                            draftMessage = "",
+                            messages = it.messages.filterNot { message -> message.id == sent.id } + sent,
+                        )
                     }
                 }
                 is AppResult.Failure -> _uiState.update { it.copy(isSending = false, sendError = result.error) }

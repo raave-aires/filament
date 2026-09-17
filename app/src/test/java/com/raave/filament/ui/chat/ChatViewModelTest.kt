@@ -116,6 +116,44 @@ class ChatViewModelTest {
     }
 
     @Test
+    fun `atualizar traz mensagens novas`() {
+        tickets.messagesResult = AppResult.Success(listOf(message(id = 1)))
+        val viewModel = viewModel()
+
+        tickets.messagesResult = AppResult.Success(listOf(message(id = 1), message(id = 2)))
+        viewModel.onRefresh()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isRefreshing)
+        assertEquals(listOf(1L, 2L), state.messages.map { it.id })
+    }
+
+    @Test
+    fun `falha ao atualizar mantem a conversa na tela`() {
+        tickets.messagesResult = AppResult.Success(listOf(message(id = 1)))
+        val viewModel = viewModel()
+
+        tickets.messagesResult = AppResult.Failure(AppError.Network)
+        viewModel.onRefresh()
+
+        val state = viewModel.uiState.value
+        assertEquals(AppError.Network, state.refreshError)
+        assertEquals(null, state.loadError)
+        assertEquals(listOf(1L), state.messages.map { it.id })
+    }
+
+    @Test
+    fun `mensagem enviada nao duplica se a conversa ja a trouxe`() {
+        tickets.messagesResult = AppResult.Success(listOf(message(id = 1), message(id = 99, isMine = true)))
+        val viewModel = viewModel()
+        viewModel.onMessageChange("Olá")
+
+        viewModel.onSendClick()
+
+        assertEquals(listOf(1L, 99L), viewModel.uiState.value.messages.map { it.id })
+    }
+
+    @Test
     fun `nao envia mensagem vazia sem anexo`() {
         val viewModel = viewModel()
         viewModel.onMessageChange("   ")

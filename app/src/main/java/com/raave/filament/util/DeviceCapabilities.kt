@@ -13,8 +13,9 @@ class DeviceCapabilities @Inject constructor(
 ) {
 
     /**
-     * Blur só é aplicado quando nada o desaconselha. Reavaliar a cada retomada da tela: a economia de
-     * bateria pode ser ligada com o app aberto.
+     * Blur do vidro fosco (Haze) só é aplicado quando nada o desaconselha; senão as barras ficam só
+     * com a tinta translúcida. Reavaliar a cada retomada: a economia de bateria pode ser ligada com o
+     * app aberto.
      */
     fun isBlurSupported(): Boolean = !isBlurProblematicDevice() && !isPowerSaveMode()
 

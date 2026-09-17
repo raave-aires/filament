@@ -37,6 +37,7 @@
     <string name="tickets_error_title">Não foi possível carregar os chamados</string>
     <string name="tickets_action_retry">Tentar novamente</string>
     <string name="tickets_status_label">Status: %1$s</string>
+    <string name="tickets_refresh_error">Não foi possível atualizar a lista. %1$s</string>
     <string name="tickets_date_label">Aberto em %1$s</string>
 
     <string name="chat_action_back">Voltar</string>

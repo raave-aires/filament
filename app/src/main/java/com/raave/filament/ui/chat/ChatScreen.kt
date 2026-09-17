@@ -3,6 +3,7 @@ package com.raave.filament.ui.chat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -26,9 +28,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -41,8 +45,12 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -62,15 +71,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.R as LucideR
 import com.raave.filament.R
 import com.raave.filament.domain.model.AppError
 import com.raave.filament.domain.model.Message
 import com.raave.filament.ui.common.toMessage
+import com.raave.filament.ui.components.rememberGlassState
+import com.raave.filament.ui.components.HairlineEdge
+import com.raave.filament.ui.components.glass
+import com.raave.filament.ui.components.hairline
 import com.raave.filament.ui.format.toTimeLabel
 import com.raave.filament.ui.theme.FilamentTheme
+import com.raave.filament.ui.theme.filamentTextFieldColors
 import com.raave.filament.util.HapticUtil
+import dev.chrisbanes.haze.hazeSource
 import java.time.Instant
 
 /** Em tablet/paisagem a conversa fica numa coluna central em vez de espalhar bolhas pelas bordas. */
@@ -87,11 +103,20 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Respostas do atendimento chegam enquanto o usuário está em outro app: ao voltar, a conversa se
+    // atualiza sozinha. O pull-to-refresh fica como gesto manual, mas numa conversa longa ele exige
+    // rolar até o topo, longe das mensagens novas. Na primeira retomada a carga inicial já está em
+    // andamento e o onRefresh a ignora.
+    LifecycleResumeEffect(viewModel) {
+        viewModel.onRefresh()
+        onPauseOrDispose {}
+    }
     ChatScreenContent(
         uiState = uiState,
         onBackClick = onBackClick,
         onMoreClick = {},
         onRetryClick = viewModel::onRetryClick,
+        onRefresh = viewModel::onRefresh,
         onMessageChange = viewModel::onMessageChange,
         onAttachmentsPicked = viewModel::onAttachmentsPicked,
         onRemoveAttachment = viewModel::onRemoveAttachment,
@@ -107,6 +132,7 @@ private fun ChatScreenContent(
     onBackClick: () -> Unit,
     onMoreClick: () -> Unit,
     onRetryClick: () -> Unit,
+    onRefresh: () -> Unit,
     onMessageChange: (String) -> Unit,
     onAttachmentsPicked: (List<String>) -> Unit,
     onRemoveAttachment: (String) -> Unit,
@@ -120,54 +146,29 @@ private fun ChatScreenContent(
         onResult = { uris -> onAttachmentsPicked(uris.map { it.toString() }) },
     )
 
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
-            modifier = Modifier
-                .widthIn(max = ChatMaxWidth)
-                .fillMaxSize(),
-        ) {
+    // A conversa ocupa a tela toda e rola por trás das duas barras de vidro, que a desfocam.
+    val hazeState = rememberGlassState()
+    val glassBorder = FilamentTheme.colors.glassBorder
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = Color.Transparent,
+        // Cada barra aplica os próprios insets; o conteúdo recebe só as alturas delas.
+        contentWindowInsets = WindowInsets(0),
+        topBar = {
             ChatTopBar(
                 title = uiState.ticketTitle,
                 onBackClick = onBackClick,
                 onMoreClick = onMoreClick,
-                modifier = Modifier.windowInsetsPadding(
-                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-                ),
-            )
-            Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-            ) {
-                when {
-                    uiState.isLoading -> {
-                        LoadingIndicator(modifier = Modifier.align(Alignment.Center))
-                    }
-                    uiState.loadError != null -> {
-                        ChatErrorState(
-                            error = uiState.loadError,
-                            onRetryClick = onRetryClick,
-                            modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp),
-                        )
-                    }
-                    uiState.messages.isEmpty() -> {
-                        Text(
-                            text = stringResource(R.string.chat_empty_body),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp),
-                        )
-                    }
-                    else -> {
-                        ChatMessageList(
-                            messages = uiState.messages,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            }
+                    .glass(hazeState)
+                    .hairline(glassBorder, edge = HairlineEdge.Bottom)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                    ),
+            )
+        },
+        bottomBar = {
             ChatInputBar(
                 uiState = uiState,
                 onValueChange = onMessageChange,
@@ -176,10 +177,87 @@ private fun ChatScreenContent(
                 onRemoveAttachment = onRemoveAttachment,
                 // safeDrawing já une navigation bar e teclado; somar a altura da navigation bar à
                 // mão contava a barra duas vezes com o teclado aberto.
-                modifier = Modifier.windowInsetsPadding(
-                    WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
-                ),
+                modifier = Modifier
+                    .glass(hazeState)
+                    .hairline(glassBorder, edge = HairlineEdge.Top)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                    ),
             )
+        },
+    ) { barsPadding ->
+        val pullState = rememberPullToRefreshState()
+        // Puxar pra baixo busca respostas novas do atendimento sem sair e voltar do chamado.
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = onRefresh,
+            state = pullState,
+            enabled = !uiState.isLoading,
+            indicator = {
+                PullToRefreshDefaults.LoadingIndicator(
+                    state = pullState,
+                    isRefreshing = uiState.isRefreshing,
+                    // Abaixo da barra superior: a conversa passa por trás dela, o indicador não.
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = barsPadding.calculateTopPadding()),
+                )
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                contentAlignment = Alignment.TopCenter,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(hazeState)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+            ) {
+                when {
+                    uiState.isLoading -> {
+                        LoadingIndicator(
+                            color = FilamentTheme.colors.primaryText,
+                            modifier = Modifier.align(Alignment.Center).padding(barsPadding),
+                        )
+                    }
+                    uiState.loadError != null -> {
+                        ChatErrorState(
+                            error = uiState.loadError,
+                            onRetryClick = onRetryClick,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(barsPadding)
+                                .padding(horizontal = 24.dp),
+                        )
+                    }
+                    uiState.messages.isEmpty() -> {
+                        // Rolável (mesmo sem precisar) pra o pull-to-refresh receber o gesto.
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(barsPadding),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.chat_empty_body),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp),
+                            )
+                        }
+                    }
+                    else -> {
+                        ChatMessageList(
+                            messages = uiState.messages,
+                            barsPadding = barsPadding,
+                            modifier = Modifier
+                                .widthIn(max = ChatMaxWidth)
+                                .fillMaxSize(),
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -192,59 +270,64 @@ private fun ChatTopBar(
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        FilledTonalIconButton(
-            onClick = {
-                HapticUtil.performUIHaptic(view)
-                onBackClick()
-            },
-            modifier = Modifier.size(48.dp),
-        ) {
-            Icon(
-                painter = painterResource(LucideR.drawable.lucide_ic_arrow_left),
-                contentDescription = stringResource(R.string.chat_action_back),
-            )
-        }
-        // Título em pílula: mesma linguagem "flutuante" da FilamentFloatingToolbar, só que fixa
-        // no topo em vez de sobrepor o conteúdo.
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
-                .weight(1f)
-                .height(48.dp),
+                .widthIn(max = ChatMaxWidth)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            Box(
-                contentAlignment = Alignment.CenterStart,
-                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            FilledTonalIconButton(
+                onClick = {
+                    HapticUtil.performUIHaptic(view)
+                    onBackClick()
+                },
+                modifier = Modifier.size(48.dp),
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMediumEmphasized,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics { heading() },
+                Icon(
+                    painter = painterResource(LucideR.drawable.lucide_ic_arrow_left),
+                    contentDescription = stringResource(R.string.chat_action_back),
                 )
             }
-        }
-        // Sem ação ainda — reservado pra opções do chamado (ver detalhes, encerrar) mais adiante.
-        FilledTonalIconButton(
-            onClick = {
-                HapticUtil.performUIHaptic(view)
-                onMoreClick()
-            },
-            modifier = Modifier.size(48.dp),
-        ) {
-            Icon(
-                painter = painterResource(LucideR.drawable.lucide_ic_ellipsis_vertical),
-                contentDescription = stringResource(R.string.chat_action_more),
-            )
+            // Título em pílula: mesma linguagem "flutuante" da FilamentFloatingToolbar, só que fixa
+            // no topo em vez de sobrepor o conteúdo.
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                // Altura mínima, não fixa: com fonte grande do sistema o título crescia além dos 48.dp e
+                // era cortado.
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.CenterStart,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                }
+            }
+            // Sem ação ainda — reservado pra opções do chamado (ver detalhes, encerrar) mais adiante.
+            FilledTonalIconButton(
+                onClick = {
+                    HapticUtil.performUIHaptic(view)
+                    onMoreClick()
+                },
+                modifier = Modifier.size(48.dp),
+            ) {
+                Icon(
+                    painter = painterResource(LucideR.drawable.lucide_ic_ellipsis_vertical),
+                    contentDescription = stringResource(R.string.chat_action_more),
+                )
+            }
         }
     }
 }
@@ -277,6 +360,7 @@ private val SeparateBubbleSpacing = 16.dp
 @Composable
 private fun ChatMessageList(
     messages: List<Message>,
+    barsPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -286,7 +370,12 @@ private fun ChatMessageList(
     LazyColumn(
         state = listState,
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = barsPadding.calculateTopPadding() + 12.dp,
+            bottom = barsPadding.calculateBottomPadding() + 12.dp,
+        ),
     ) {
         itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
             val previous = messages.getOrNull(index - 1)
@@ -312,13 +401,15 @@ private fun ChatMessageList(
 @Composable
 private fun ChatBubble(message: Message, showAuthorLabel: Boolean) {
     val isMine = message.isMine
-    val colors = MaterialTheme.colorScheme
-    val containerColor = if (isMine) colors.primaryContainer else colors.surfaceContainerHigh
-    val contentColor = if (isMine) colors.onPrimaryContainer else colors.onSurface
-    // Horário em cor sólida: com alpha 0.6 sobre a bolha ele ficava abaixo de 4.5:1 (texto de
-    // 11sp) nos dois temas. A hierarquia fica por conta do tamanho (labelSmall).
-    val timeColor = if (isMine) colors.onPrimaryContainer else colors.onSurfaceVariant
-    // Cantos do tema (large = 16.dp), com o canto do lado do remetente reduzido ao extraSmall.
+    val colors = FilamentTheme.colors
+    // Minha: preenchimento `primary`. Recebida: `card` com borda, como os cards do shadcn — num fundo
+    // `muted` o horário em `mutedForeground` ficaria em 4,1:1 no tema claro, abaixo do mínimo.
+    val containerColor = if (isMine) colors.primary else colors.card
+    val contentColor = if (isMine) colors.primaryForeground else colors.cardForeground
+    // Horário em cor sólida: com alpha a hierarquia vinha ao custo do contraste; ela fica por conta
+    // do tamanho (labelSmall).
+    val timeColor = if (isMine) colors.primaryForeground else colors.mutedForeground
+    // Cantos do tema (large = 14.dp), com o canto do lado do remetente reduzido.
     val tailCorner = CornerSize(4.dp)
     val bubbleShape = if (isMine) {
         MaterialTheme.shapes.large.copy(bottomEnd = tailCorner)
@@ -336,6 +427,7 @@ private fun ChatBubble(message: Message, showAuthorLabel: Boolean) {
                 .widthIn(max = 280.dp)
                 .clip(bubbleShape)
                 .background(containerColor)
+                .then(if (isMine) Modifier else Modifier.border(1.dp, colors.border, bubbleShape))
                 // Uma bolha = um anúncio no TalkBack (autor, texto e horário juntos).
                 .semantics(mergeDescendants = true) {}
                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -344,7 +436,7 @@ private fun ChatBubble(message: Message, showAuthorLabel: Boolean) {
                 Text(
                     text = message.authorName.orEmpty(),
                     style = MaterialTheme.typography.labelMediumEmphasized,
-                    color = colors.primary,
+                    color = colors.mutedForeground,
                     modifier = Modifier.padding(bottom = 2.dp),
                 )
             }
@@ -379,10 +471,14 @@ private fun ChatInputBar(
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
-    // Cor de container explícita em vez de tonalElevation: o overlay de surfaceTint por elevação é
-    // o modelo antigo do M3 e, sobre o preto AMOLED, não batia com os containers do resto da tela.
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = ChatMaxWidth)
+                .fillMaxWidth()
+                .padding(12.dp),
+        ) {
+            uiState.refreshError?.let { InputBarError(it) }
             uiState.sendError?.let { InputBarError(it) }
             uiState.attachmentError?.let { InputBarError(it) }
             if (uiState.attachments.isNotEmpty()) {
@@ -423,8 +519,9 @@ private fun ChatInputBar(
                     enabled = !uiState.isSending,
                     maxLines = 4,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                    // extraLarge (28.dp) é pílula completa numa linha (56.dp) e continua legível com
-                    // 4 linhas; 50% virava um estádio que recortava os cantos do texto.
+                    colors = filamentTextFieldColors(),
+                    // extraLarge (18.dp na escala do tema) arredonda bem numa linha e continua legível
+                    // com 4 linhas; 50% virava um estádio que recortava os cantos do texto.
                     shape = MaterialTheme.shapes.extraLarge,
                     modifier = Modifier.weight(1f),
                 )
@@ -535,6 +632,7 @@ private fun ChatScreenPreview() {
             onBackClick = {},
             onMoreClick = {},
             onRetryClick = {},
+            onRefresh = {},
             onMessageChange = {},
             onAttachmentsPicked = {},
             onRemoveAttachment = {},

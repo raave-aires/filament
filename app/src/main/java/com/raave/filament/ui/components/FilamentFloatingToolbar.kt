@@ -4,6 +4,8 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,10 +23,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingToolbarColors
 import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.FloatingToolbarHorizontalFabPosition
-import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -36,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -44,13 +44,17 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.raave.filament.ui.theme.FilamentTheme
 import com.raave.filament.util.HapticUtil
+import dev.chrisbanes.haze.HazeState
 
 data class ToolbarItem(
     @param:DrawableRes val iconRes: Int,
@@ -60,11 +64,16 @@ data class ToolbarItem(
 )
 
 /**
- * Barra de navegação flutuante (Material 3 Expressive), com FAB acoplado.
+ * Barra de navegação flutuante (Material 3 Expressive) em vidro fosco, com o FAB ao lado.
  *
  * Só o item selecionado exibe rótulo, expandindo com animação — isso mantém a barra equilibrada
  * independentemente do comprimento de cada rótulo. Em fontes muito grandes ou telas estreitas os
  * rótulos somem por completo, para os itens nunca se espremerem.
+ *
+ * Usa o HorizontalFloatingToolbar sem FAB acoplado, com o FAB como irmão: na variante com FAB os
+ * dois dividem o mesmo layout, e o vidro desfocaria também o espaço em volta do FAB.
+ *
+ * @param hazeState onde o conteúdo que passa por trás da barra foi registrado com `hazeSource`.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -72,10 +81,8 @@ fun FilamentFloatingToolbar(
     items: List<ToolbarItem>,
     selectedIndex: Int,
     onItemSelected: (Int) -> Unit,
+    hazeState: HazeState,
     modifier: Modifier = Modifier,
-    expanded: Boolean = true,
-    scrollBehavior: FloatingToolbarScrollBehavior? = null,
-    colors: FloatingToolbarColors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
     floatingActionButton: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -93,40 +100,49 @@ fun FilamentFloatingToolbar(
         val widestPx = labels.maxOfOrNull { textMeasurer.measure(it, labelStyle).size.width } ?: 0
         with(density) { widestPx.toDp() }
     }
+    val shape = FloatingToolbarDefaults.ContainerShape
 
-    HorizontalFloatingToolbar(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ToolbarFabSpacing),
         modifier = modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = 16.dp),
-        expanded = expanded,
-        scrollBehavior = scrollBehavior,
-        colors = colors,
-        floatingActionButton = floatingActionButton ?: {},
-        floatingActionButtonPosition = FloatingToolbarHorizontalFabPosition.End,
-        expandedShadowElevation = ToolbarShadowElevation,
-        collapsedShadowElevation = ToolbarShadowElevation,
     ) {
-        items.forEachIndexed { index, item ->
-            ToolbarNavItem(
-                item = item,
-                label = labels[index],
-                labelStyle = labelStyle,
-                labelSlotWidth = if (hideLabels) 0.dp else labelSlotWidth,
-                selected = index == selectedIndex,
-                onClick = { onItemSelected(index) },
-            )
-            if (index < items.lastIndex) {
-                Spacer(modifier = Modifier.width(4.dp))
+        HorizontalFloatingToolbar(
+            expanded = true,
+            // Sem sombra: atrás de uma superfície translúcida ela aparece por dentro, como mancha. O
+            // contorno de 1px separa a barra do conteúdo, como a borda faria no shadcn.
+            expandedShadowElevation = 0.dp,
+            collapsedShadowElevation = 0.dp,
+            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                toolbarContainerColor = Color.Transparent,
+                toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            modifier = Modifier
+                .clip(shape)
+                .glass(hazeState)
+                .border(1.dp, FilamentTheme.colors.glassBorder, shape),
+        ) {
+            items.forEachIndexed { index, item ->
+                ToolbarNavItem(
+                    item = item,
+                    label = labels[index],
+                    labelStyle = labelStyle,
+                    labelSlotWidth = if (hideLabels) 0.dp else labelSlotWidth,
+                    selected = index == selectedIndex,
+                    onClick = { onItemSelected(index) },
+                )
+                if (index < items.lastIndex) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
             }
         }
+        floatingActionButton?.invoke()
     }
 }
 
-// O FAB do toolbar (FloatingToolbarDefaults.*FloatingActionButton) fixa elevação nível 2 e não
-// expõe parâmetro pra mudar, enquanto o container com FAB vem em nível 1 expandido e 0 recolhido —
-// era daí que vinha a sombra só no FAB. Igualar os dois no nível 2 faz barra e FAB lerem como uma
-// peça flutuante só, que é o que o Material especifica pro par.
-private val ToolbarShadowElevation = 3.dp
+private val ToolbarFabSpacing = 8.dp
 
 private val IconSize = 24.dp
 private val ItemHorizontalPadding = 14.dp
@@ -159,22 +175,23 @@ private fun ToolbarNavItem(
     )
 
     // Cor e opacidade usam a spec de "effects" (sem overshoot) e o que se move usa a "spatial",
-    // como o Material 3 Expressive separa. Selecionado = surfaceContainer/onSurface, conforme
-    // FloatingToolbarTokens.VibrantButtonSelected* (antes era `surface`, que no escuro AMOLED
-    // virava uma pílula preta chapada sobre o primaryContainer).
+    // como o Material 3 Expressive separa. Selecionado = secondaryContainer, que no tema é o
+    // `secondary` do shadcn: pílula cinza opaca sobre o vidro.
     val containerColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent,
+        targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
         animationSpec = motionScheme.defaultEffectsSpec(),
         label = "navItemContainer",
     )
     val contentColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onSurface else LocalContentColor.current,
+        targetValue = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else LocalContentColor.current,
         animationSpec = motionScheme.defaultEffectsSpec(),
         label = "navItemContent",
     )
 
     // Surface "selectable": o TalkBack anuncia a aba como selecionada, e o papel Tab a identifica
-    // como destino de navegação em vez de botão genérico.
+    // como destino de navegação em vez de botão genérico. O nome vai na própria aba: o rótulo das
+    // abas não selecionadas fica recortado (largura zero) e o Compose o tira da árvore de
+    // acessibilidade — elas eram anunciadas sem nome.
     Surface(
         selected = selected,
         onClick = {
@@ -187,7 +204,10 @@ private fun ToolbarNavItem(
         modifier = Modifier
             .height(48.dp)
             .width(itemWidth)
-            .semantics { role = Role.Tab },
+            .semantics {
+                role = Role.Tab
+                contentDescription = label
+            },
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -200,8 +220,7 @@ private fun ToolbarNavItem(
             // A Box é fixada no tamanho do ícone para o badge transbordar só no desenho: se ele
             // entrasse na medição, empurraria o rótulo e quebraria a largura fixa da pílula.
             Box(modifier = Modifier.size(IconSize)) {
-                // O Text do rótulo fica sempre na árvore de semântica (só é recortado/transparente),
-                // então descrever o ícone também fazia o TalkBack ler o nome duas vezes.
+                // Nome já está na semântica da aba (acima).
                 Icon(
                     painter = painterResource(item.iconRes),
                     contentDescription = null,
@@ -241,7 +260,8 @@ private fun ToolbarNavItem(
                 // Antes eram duas molas soltas (largura na spatial, opacidade na effects), e o
                 // texto aparecia recortado no meio do caminho ou terminava fora de hora.
                 // Leitura na fase de desenho: não recompõe nem refaz layout.
-                modifier = Modifier.graphicsLayer {
+                // Fora da acessibilidade: na aba selecionada seria o nome lido pela segunda vez.
+                modifier = Modifier.clearAndSetSemantics {}.graphicsLayer {
                     val revealed = ((itemWidth - IconOnlyWidth) / labelSlot).coerceIn(0f, 1f)
                     alpha = revealed
                     translationX = -(1f - revealed) * LabelRevealSlide.toPx()
