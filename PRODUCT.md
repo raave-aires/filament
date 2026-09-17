@@ -49,7 +49,7 @@ Não é outro sistema de chamados: é uma interface para o GLPI que a Elinsa já
 - Nome do produto: **Filament**, para a **Elinsa**. Logo em `app/src/main/res/drawable/ic_logo.xml`.
 - Tema no estilo shadcn/ui: paleta **"Mist"** (tokens em `ui/theme/Color.kt`, claro e escuro) e escala de raio do shadcn (`--radius` 10). Substituiu a paleta própria derivada do azul da Elinsa e o fundo preto AMOLED (decisão de 2026-09-17).
 - Nunca dynamic color do Android.
-- Superfícies principais (barra de navegação, barras do chat, faixa da status bar) em **vidro fosco**: conteúdo desfocado por trás + tinta translúcida + contorno de 1px.
+- Transparência única no app: controles **flutuantes** (pílulas opacas com contorno de 1px, sem faixa de fundo) sobre o conteúdo, que ganha **blur progressivo + degradê** nas bordas onde passa por trás deles (status bar, barra de navegação, barras do chat). Padrão do repositório `sameerasw/android-common` (edge-to-edge + progressive blur).
 - Componentes, estados de carregamento e animações seguem o padrão Compose/Material 3 (Expressive); só o tema é shadcn.
 
 ## Evidence on Hand

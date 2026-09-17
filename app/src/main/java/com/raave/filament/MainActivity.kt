@@ -11,7 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.raave.filament.data.auth.AuthCallback
-import com.raave.filament.ui.components.LocalBlurEnabled
+import com.raave.filament.ui.modifier.LocalBlurEnabled
 import com.raave.filament.ui.navigation.ExternalAuthCallback
 import com.raave.filament.ui.navigation.FilamentNavigation
 import com.raave.filament.ui.theme.FilamentTheme

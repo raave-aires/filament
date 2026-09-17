@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.lerp
 /**
  * Tokens do tema, no vocabulário do shadcn/ui (paleta "Mist"). Os componentes continuam sendo do
  * Material 3: [toColorScheme] traduz estes tokens para os papéis do ColorScheme, e só o que o
- * Material não tem papel equivalente (borda, card, vidro) é lido direto daqui via
+ * Material não tem papel equivalente (borda, card) é lido direto daqui via
  * `FilamentTheme.colors`.
  *
  * Valores convertidos de OKLCH para sRGB com mapeamento de gamut por redução de croma (como os
@@ -52,10 +52,6 @@ data class FilamentColors(
      * fundo dá 2,2:1. Claro: `primary` (6,8:1). Escuro: `sidebarPrimary` (5,3:1).
      */
     val primaryText: Color,
-    /** Tinta translúcida das superfícies de vidro fosco (barras), aplicada sobre o conteúdo desfocado. */
-    val glassTint: Color,
-    /** Contorno de 1px das superfícies de vidro, pra separá-las do conteúdo que passa por trás. */
-    val glassBorder: Color,
 )
 
 val MistLight = FilamentColors(
@@ -86,8 +82,6 @@ val MistLight = FilamentColors(
     sidebarBorder = Color(0xFFE3E7E8),
     sidebarRing = Color(0xFF9CA8AB),
     primaryText = Color(0xFF1447E6),
-    glassTint = Color(0xFFFFFFFF).copy(alpha = 0.72f),
-    glassBorder = Color(0xFFE3E7E8),
 )
 
 val MistDark = FilamentColors(
@@ -118,8 +112,6 @@ val MistDark = FilamentColors(
     sidebarBorder = Color(0x1AFFFFFF),
     sidebarRing = Color(0xFF67787C),
     primaryText = Color(0xFF3280FF),
-    glassTint = Color(0xFF090B0C).copy(alpha = 0.64f),
-    glassBorder = Color(0x1AFFFFFF),
 )
 
 /**
@@ -127,6 +119,8 @@ val MistDark = FilamentColors(
  *
  * - O shadcn não tem "containers" tonais: `primaryContainer` é o próprio `primary`, e
  *   `secondaryContainer` o `secondary` (botões tonais viram o botão secundário cinza).
+ * - O `secondary` do M3 é cor de conteúdo (ex.: rótulo do item ativo da navigation rail), então recebe
+ *   o `secondaryForeground`; o `secondary` do shadcn, que é fundo, fica só no `secondaryContainer`.
  * - Bordas translúcidas do escuro são compostas sobre o fundo: alguns componentes do M3 assumem
  *   `outline` opaco.
  * - `surfaceTint` transparente desliga a sobreposição de cor por elevação, que não existe no shadcn.
@@ -150,8 +144,8 @@ fun FilamentColors.toColorScheme(dark: Boolean): ColorScheme {
         primaryContainer = primary,
         onPrimaryContainer = primaryForeground,
         inversePrimary = sidebarPrimary,
-        secondary = secondary,
-        onSecondary = secondaryForeground,
+        secondary = secondaryForeground,
+        onSecondary = secondary,
         secondaryContainer = secondary,
         onSecondaryContainer = secondaryForeground,
         tertiary = sidebarPrimary,

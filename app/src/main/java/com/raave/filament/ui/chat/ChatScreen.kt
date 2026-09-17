@@ -2,6 +2,7 @@ package com.raave.filament.ui.chat
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.LoadingIndicator
@@ -78,15 +80,11 @@ import com.raave.filament.R
 import com.raave.filament.domain.model.AppError
 import com.raave.filament.domain.model.Message
 import com.raave.filament.ui.common.toMessage
-import com.raave.filament.ui.components.rememberGlassState
-import com.raave.filament.ui.components.HairlineEdge
-import com.raave.filament.ui.components.glass
-import com.raave.filament.ui.components.hairline
 import com.raave.filament.ui.format.toTimeLabel
+import com.raave.filament.ui.modifier.progressiveEdgeBlur
 import com.raave.filament.ui.theme.FilamentTheme
 import com.raave.filament.ui.theme.filamentTextFieldColors
 import com.raave.filament.util.HapticUtil
-import dev.chrisbanes.haze.hazeSource
 import java.time.Instant
 
 /** Em tablet/paisagem a conversa fica numa coluna central em vez de espalhar bolhas pelas bordas. */
@@ -146,10 +144,9 @@ private fun ChatScreenContent(
         onResult = { uris -> onAttachmentsPicked(uris.map { it.toString() }) },
     )
 
-    // A conversa ocupa a tela toda e rola por trás das duas barras de vidro, que a desfocam.
-    val hazeState = rememberGlassState()
-    val glassBorder = FilamentTheme.colors.glassBorder
-
+    // Barras flutuantes (só os controles, sem faixa de fundo): a conversa ocupa a tela toda, rola por
+    // trás delas e ganha blur progressivo nas bordas (progressiveEdgeBlur, na lista) — padrão
+    // edge-to-edge do Scaffold, com os insets nas barras e as alturas delas como contentPadding.
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = Color.Transparent,
@@ -161,8 +158,6 @@ private fun ChatScreenContent(
                 onBackClick = onBackClick,
                 onMoreClick = onMoreClick,
                 modifier = Modifier
-                    .glass(hazeState)
-                    .hairline(glassBorder, edge = HairlineEdge.Bottom)
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                     ),
@@ -178,8 +173,6 @@ private fun ChatScreenContent(
                 // safeDrawing já une navigation bar e teclado; somar a altura da navigation bar à
                 // mão contava a barra duas vezes com o teclado aberto.
                 modifier = Modifier
-                    .glass(hazeState)
-                    .hairline(glassBorder, edge = HairlineEdge.Top)
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
                     ),
@@ -209,7 +202,6 @@ private fun ChatScreenContent(
                 contentAlignment = Alignment.TopCenter,
                 modifier = Modifier
                     .fillMaxSize()
-                    .hazeSource(hazeState)
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
             ) {
                 when {
@@ -295,7 +287,9 @@ private fun ChatTopBar(
             // no topo em vez de sobrepor o conteúdo.
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = FilamentTheme.colors.card,
+                // Flutua sobre a conversa: o contorno separa a pílula de bolhas de cor parecida.
+                border = BorderStroke(1.dp, FilamentTheme.colors.border),
                 // Altura mínima, não fixa: com fonte grande do sistema o título crescia além dos 48.dp e
                 // era cortado.
                 modifier = Modifier
@@ -369,7 +363,11 @@ private fun ChatMessageList(
     }
     LazyColumn(
         state = listState,
-        modifier = modifier,
+        modifier = modifier.progressiveEdgeBlur(
+            top = barsPadding.calculateTopPadding(),
+            bottom = barsPadding.calculateBottomPadding(),
+            scrollState = listState,
+        ),
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,
@@ -504,6 +502,10 @@ private fun ChatInputBar(
                         onAttachClick()
                     },
                     enabled = !uiState.isSending,
+                    // Desabilitado o padrão é translúcido, e sem faixa atrás a conversa apareceria através.
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
                     modifier = Modifier.padding(bottom = InputButtonBottomInset),
                 ) {
                     Icon(
@@ -519,7 +521,8 @@ private fun ChatInputBar(
                     enabled = !uiState.isSending,
                     maxLines = 4,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                    colors = filamentTextFieldColors(),
+                    // Sem faixa atrás, o campo precisa de fundo próprio pra o texto não brigar com a conversa.
+                    colors = filamentTextFieldColors(containerColor = FilamentTheme.colors.card),
                     // extraLarge (18.dp na escala do tema) arredonda bem numa linha e continua legível
                     // com 4 linhas; 50% virava um estádio que recortava os cantos do texto.
                     shape = MaterialTheme.shapes.extraLarge,
@@ -532,6 +535,9 @@ private fun ChatInputBar(
                         onSendClick()
                     },
                     enabled = uiState.canSend,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
                     modifier = Modifier.padding(bottom = InputButtonBottomInset),
                 ) {
                     if (uiState.isSending) {
@@ -557,14 +563,21 @@ private val InputButtonBottomInset = 8.dp
 
 @Composable
 private fun InputBarError(error: AppError) {
-    Text(
-        text = error.toMessage(),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.error,
-        modifier = Modifier
-            .padding(bottom = 8.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite },
-    )
+    // Pílula própria: texto solto por cima das mensagens ficaria ilegível sem a faixa da barra.
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.padding(bottom = 8.dp),
+    ) {
+        Text(
+            text = error.toMessage(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+        )
+    }
 }
 
 /**
@@ -600,6 +613,7 @@ private fun AttachmentInputChip(attachment: AttachmentChip, enabled: Boolean, on
             )
         },
         shape = CircleShape,
+        colors = InputChipDefaults.inputChipColors(containerColor = FilamentTheme.colors.card),
     )
 }
 

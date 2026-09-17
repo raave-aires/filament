@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 
 private val LocalFilamentColors = staticCompositionLocalOf { MistLight }
 
-/** Acesso aos tokens shadcn que não têm papel no ColorScheme do Material (borda, card, vidro). */
+/** Acesso aos tokens shadcn que não têm papel no ColorScheme do Material (borda, card). */
 object FilamentTheme {
     val colors: FilamentColors
         @Composable

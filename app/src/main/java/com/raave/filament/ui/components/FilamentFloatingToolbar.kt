@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.raave.filament.ui.theme.FilamentTheme
 import com.raave.filament.util.HapticUtil
-import dev.chrisbanes.haze.HazeState
 
 data class ToolbarItem(
     @param:DrawableRes val iconRes: Int,
@@ -64,16 +63,16 @@ data class ToolbarItem(
 )
 
 /**
- * Barra de navegação flutuante (Material 3 Expressive) em vidro fosco, com o FAB ao lado.
+ * Barra de navegação flutuante (Material 3 Expressive), com o FAB ao lado. Pílula opaca com contorno,
+ * o mesmo material dos controles flutuantes do chat: a transparência fica no conteúdo que passa por
+ * trás (ver `progressiveEdgeBlur`), não na barra.
  *
  * Só o item selecionado exibe rótulo, expandindo com animação — isso mantém a barra equilibrada
  * independentemente do comprimento de cada rótulo. Em fontes muito grandes ou telas estreitas os
  * rótulos somem por completo, para os itens nunca se espremerem.
  *
  * Usa o HorizontalFloatingToolbar sem FAB acoplado, com o FAB como irmão: na variante com FAB os
- * dois dividem o mesmo layout, e o vidro desfocaria também o espaço em volta do FAB.
- *
- * @param hazeState onde o conteúdo que passa por trás da barra foi registrado com `hazeSource`.
+ * dois dividem o mesmo contêiner, e o contorno da pílula passaria a envolver o FAB junto.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -81,7 +80,6 @@ fun FilamentFloatingToolbar(
     items: List<ToolbarItem>,
     selectedIndex: Int,
     onItemSelected: (Int) -> Unit,
-    hazeState: HazeState,
     modifier: Modifier = Modifier,
     floatingActionButton: (@Composable () -> Unit)? = null,
 ) {
@@ -111,18 +109,16 @@ fun FilamentFloatingToolbar(
     ) {
         HorizontalFloatingToolbar(
             expanded = true,
-            // Sem sombra: atrás de uma superfície translúcida ela aparece por dentro, como mancha. O
-            // contorno de 1px separa a barra do conteúdo, como a borda faria no shadcn.
+            // Sem sombra, com contorno de 1px: separação plana do shadcn, igual às pílulas do chat.
             expandedShadowElevation = 0.dp,
             collapsedShadowElevation = 0.dp,
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                toolbarContainerColor = Color.Transparent,
+                toolbarContainerColor = FilamentTheme.colors.card,
                 toolbarContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             ),
             modifier = Modifier
                 .clip(shape)
-                .glass(hazeState)
-                .border(1.dp, FilamentTheme.colors.glassBorder, shape),
+                .border(1.dp, FilamentTheme.colors.border, shape),
         ) {
             items.forEachIndexed { index, item ->
                 ToolbarNavItem(

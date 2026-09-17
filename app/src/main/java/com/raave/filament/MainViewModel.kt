@@ -20,7 +20,7 @@ class MainViewModel @Inject constructor(
 
     private val _isBlurEnabled = MutableStateFlow(deviceCapabilities.isBlurSupported())
 
-    /** Se as superfícies de vidro podem desfocar o conteúdo por trás (ver LocalBlurEnabled). */
+    /** Se as bordas do conteúdo sob os controles flutuantes podem ter blur (ver LocalBlurEnabled). */
     val isBlurEnabled: StateFlow<Boolean> = _isBlurEnabled.asStateFlow()
 
     /** Reavaliado a cada retomada: a economia de bateria pode ser ligada com o app aberto. */

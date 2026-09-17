@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -76,16 +77,13 @@ import com.raave.filament.domain.model.AppError
 import com.raave.filament.domain.model.Ticket
 import com.raave.filament.domain.model.User
 import com.raave.filament.ui.common.toMessage
-import com.raave.filament.ui.components.rememberGlassState
 import com.raave.filament.ui.components.FilamentFloatingToolbar
-import com.raave.filament.ui.components.StatusBarGlass
 import com.raave.filament.ui.components.ToolbarItem
 import com.raave.filament.ui.format.toDateLabel
+import com.raave.filament.ui.modifier.progressiveEdgeBlur
 import com.raave.filament.ui.theme.FilamentTheme
 import com.raave.filament.ui.theme.filamentCardColors
 import com.raave.filament.util.HapticUtil
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import java.time.Instant
 
 private fun homeTabItems(ticketsBadgeCount: Int?) = listOf(
@@ -103,6 +101,9 @@ private fun homeTabItems(ticketsBadgeCount: Int?) = listOf(
  * num celular deitado, a barra embaixo desperdiça a altura que é justamente o que falta.
  */
 private val RailBreakpoint = 600.dp
+
+/** Acima dessa escala de fonte os rótulos da navegação somem (a barra flutuante usa o mesmo corte). */
+private const val LabelsMaxFontScale = 1.25f
 
 /**
  * Abaixo da altura "compact" do M3 (celular deitado), um diálogo comum com o teclado aberto some quase
@@ -169,8 +170,6 @@ private fun HomeScreenContent(
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val useRail = maxWidth >= RailBreakpoint
-        // Conteúdo das abas (hazeSource) que as superfícies de vidro desfocam ao passar por trás.
-        val hazeState = rememberGlassState()
 
         when {
             uiState.isUserLoading -> {
@@ -193,33 +192,27 @@ private fun HomeScreenContent(
             useRail -> {
                 Row(modifier = Modifier.fillMaxSize()) {
                     HomeNavigationRail(uiState = uiState, actions = actions)
-                    Box(modifier = Modifier.weight(1f)) {
-                        HomeTabs(
-                            uiState = uiState,
-                            actions = actions,
-                            hazeState = hazeState,
-                            // A rail já cuida do lado inicial; só o lado final precisa de inset.
-                            horizontalInsets = WindowInsetsSides.End,
-                            bottomReserved = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                        )
-                        StatusBarGlass(hazeState)
-                    }
+                    HomeTabs(
+                        uiState = uiState,
+                        actions = actions,
+                        // A rail já cuida do lado inicial; só o lado final precisa de inset.
+                        horizontalInsets = WindowInsetsSides.End,
+                        bottomReserved = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
             else -> {
                 HomeTabs(
                     uiState = uiState,
                     actions = actions,
-                    hazeState = hazeState,
                     horizontalInsets = WindowInsetsSides.Horizontal,
                     bottomReserved = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
                         ToolbarReservedHeight,
                 )
-                StatusBarGlass(hazeState)
                 HomeFloatingToolbar(
                     uiState = uiState,
                     actions = actions,
-                    hazeState = hazeState,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 8.dp),
@@ -246,7 +239,6 @@ private fun HomeScreenContent(
 private fun HomeFloatingToolbar(
     uiState: HomeUiState,
     actions: HomeActions,
-    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -254,7 +246,6 @@ private fun HomeFloatingToolbar(
         items = remember(uiState.ticketsBadgeCount) { homeTabItems(uiState.ticketsBadgeCount) },
         selectedIndex = uiState.selectedTab.ordinal,
         onItemSelected = { index -> actions.onTabSelected(HomeTab.entries[index]) },
-        hazeState = hazeState,
         modifier = modifier,
         floatingActionButton = {
             // Ação principal: preenchimento `primary` do tema (o FAB padrão usa primaryContainer, que
@@ -279,6 +270,9 @@ private fun HomeFloatingToolbar(
 private fun HomeNavigationRail(uiState: HomeUiState, actions: HomeActions) {
     val view = LocalView.current
     val items = remember(uiState.ticketsBadgeCount) { homeTabItems(uiState.ticketsBadgeCount) }
+    // Mesma regra da barra flutuante: com fonte muito grande o rótulo não cabe na largura da rail e
+    // quebrava no meio da palavra ("Chamad/os"). Sem rótulo, o ícone passa a se descrever.
+    val showLabels = LocalDensity.current.fontScale <= LabelsMaxFontScale
     WideNavigationRail(
         colors = WideNavigationRailDefaults.colors(containerColor = FilamentTheme.colors.sidebar),
         header = {
@@ -304,16 +298,21 @@ private fun HomeNavigationRail(uiState: HomeUiState, actions: HomeActions) {
                 },
                 icon = {
                     val count = item.badgeCount
-                    // O rótulo fica visível abaixo do ícone, então o ícone não se descreve de novo.
+                    // Com rótulo visível abaixo do ícone, o ícone não se descreve de novo.
+                    val iconDescription = if (showLabels) null else stringResource(item.labelRes)
                     if (count != null && count > 0) {
                         BadgedBox(badge = { Badge { Text(if (count > 99) "99+" else count.toString()) } }) {
-                            Icon(painter = painterResource(item.iconRes), contentDescription = null)
+                            Icon(painter = painterResource(item.iconRes), contentDescription = iconDescription)
                         }
                     } else {
-                        Icon(painter = painterResource(item.iconRes), contentDescription = null)
+                        Icon(painter = painterResource(item.iconRes), contentDescription = iconDescription)
                     }
                 },
-                label = { Text(stringResource(item.labelRes)) },
+                label = if (showLabels) {
+                    { Text(stringResource(item.labelRes), maxLines = 1) }
+                } else {
+                    null
+                },
                 railExpanded = false,
             )
         }
@@ -328,7 +327,6 @@ private fun HomeNavigationRail(uiState: HomeUiState, actions: HomeActions) {
 private fun HomeTabs(
     uiState: HomeUiState,
     actions: HomeActions,
-    hazeState: HazeState,
     horizontalInsets: WindowInsetsSides,
     bottomReserved: Dp,
     modifier: Modifier = Modifier,
@@ -339,7 +337,7 @@ private fun HomeTabs(
             .windowInsetsPadding(WindowInsets.safeDrawing.only(horizontalInsets)),
     ) {
         // Largura máxima aplicada como padding lateral, não como largura do contêiner: assim a
-        // rolagem e o blur continuam ocupando a tela toda e só o conteúdo fica centralizado.
+        // rolagem e o blur das bordas continuam ocupando a tela toda e só o conteúdo fica centralizado.
         val sidePadding = max(ContentMinSidePadding, (maxWidth - ContentMaxWidth) / 2)
         val edges = TabEdges(
             top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
@@ -367,9 +365,7 @@ private fun HomeTabs(
                     )
             },
             label = "tabContent",
-            modifier = Modifier
-                .fillMaxSize()
-                .hazeSource(hazeState),
+            modifier = Modifier.fillMaxSize(),
         ) { tab ->
             when (tab) {
                 HomeTab.INICIO -> ScrollableTab(edges) { InicioContent(uiState.user) }
@@ -396,6 +392,8 @@ private fun ScrollableTab(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // Antes do verticalScroll: o efeito fica no viewport, não no conteúdo que rola.
+            .progressiveEdgeBlur(top = edges.top, bottom = edges.bottom, scrollState = scrollState)
             .verticalScroll(scrollState)
             .padding(edges.contentPadding()),
         content = content,
@@ -446,7 +444,9 @@ private fun ChamadosTab(uiState: HomeUiState, actions: HomeActions, edges: TabEd
             state = listState,
             contentPadding = edges.contentPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .progressiveEdgeBlur(top = edges.top, bottom = edges.bottom, scrollState = listState),
         ) {
             item(key = "header") {
                 // Mesmo cabeçalho das outras abas: sem ele a lista começava solta sob a status bar.

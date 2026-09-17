@@ -80,7 +80,6 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
-    implementation(libs.haze)
     implementation(libs.icons.lucide.android)
     implementation(libs.icons.font.awesome.brands.android)
     debugImplementation(libs.androidx.compose.ui.tooling)
