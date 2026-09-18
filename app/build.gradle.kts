@@ -27,6 +27,23 @@ val localProperties = Properties().apply {
 }
 val devApiBaseUrl = localProperties.getProperty("api.baseUrl") ?: "http://10.0.2.2:3000"
 
+// URL de produção, definida pelo time de backend (2026-09-17). O túnel ainda não está no ar — o
+// build de release já aponta pra ela, mas só faz sentido instalar depois que o domínio responder.
+val productionApiBaseUrl = "https://backbone.rl2.me"
+
+// Keystore de release: caminho e senhas ficam fora do repo, em keystore.properties (gitignored).
+// Sem esse arquivo, o build de release falha ao tentar assinar em vez de saír sem assinatura.
+//
+//   # keystore.properties
+//   storeFile=C:/Users/raave/Chaves/carbon
+//   storePassword=...
+//   keyAlias=...
+//   keyPassword=...
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.raave.filament"
     compileSdk {
@@ -45,12 +62,27 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // TODO: sem staging publicado ainda (confirmado com o time de backend) — ajustar quando existir.
+        // Padrão de dev; o build type release sobrescreve com a URL de produção (mais específico
+        // vence sobre defaultConfig).
         buildConfigField("String", "API_BASE_URL", "\"$devApiBaseUrl\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFilePath = keystoreProperties.getProperty("storeFile")
+            if (storeFilePath != null) {
+                storeFile = file(storeFilePath)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
+            buildConfigField("String", "API_BASE_URL", "\"$productionApiBaseUrl\"")
             optimization {
                 enable = false
             }
